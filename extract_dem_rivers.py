@@ -188,8 +188,7 @@ class dem_dir(object):
             exec('S.{}=self.{}'.format(svar,svar))
         save_npz(fname,S)
         
-    def extract_river(self,sind0,acc_limit=1e4,nodata=None):
-                        
+    def extract_river(self,sind0,acc_limit=1e4,nodata=None):                       
         #pre-define varibles, will update in the loop
         if nodata is None: nodata=self.nodata
         sind=sind0; slen=len(sind); 
@@ -223,25 +222,6 @@ class dem_dir(object):
         for i in arange(len(sind0)):
             S.rivers[i]=array(S.rivers[i]).astype('int')        
         
-    # def compute_acc(self):        
-    #     #acc_max: compute acc and segments
-    #     if not hasattr(self,'dir'): sys.exit('dir not exist')
-        
-    #     #initialize acc
-    #     sind=nonzero(self.dir.ravel()==0)[0]; 
-    #     seg=arange(len(sind)).astype('int')+1
-    #     self.search_watershed(sind,seg=seg);  
-        
-    #     #reorder segment number
-    #     delattr(self,'seg')
-    #     acc=self.acc[sind]; ind=flipud(argsort(acc)); sind=sind[ind]; 
-    #     self.search_watershed(sind,seg=seg,segsort=True); 
-        
-    #     #reshape
-    #     self.acc=self.acc.reshape(self.ds)
-    #     self.seg=self.seg.reshape(self.ds)
-        
-    #     return
     
     def compute_acc(self):        
         #acc_max: compute acc and segments
@@ -407,106 +387,6 @@ class dem_dir(object):
         #reshape
         self.dir=self.dir.reshape(ds)
         
-    # def search_watershed(self,sind0,seg=1,level_max=100,wlevel=0,segsort=False):
-    #     #sind0: index of catchment pts. 
-    #     #example: sind0=nonzero(self.dir.ravel()==0)[0], or sind0=nonzero(self.dir==0)
-    #     #algorithm: two layer of recursive, to avoid errors, and improve efficiency
-        
-    #     #assign variables
-    #     ds=self.dir.shape   
-    #     if wlevel==0:
-    #         if not hasattr(self,'seg'): self.seg=zeros(self.dir.size).astype('int')
-    #         if not hasattr(self,'acc'): self.acc=zeros(self.dir.size).astype('int')
-    #         self.sinds=[]; self.sinds.append([ds,seg,level_max])
-    #         #self.segs=[]; 
-        
-    #         #convert index
-    #         if len(sind0)==2 and hasattr(sind0[0],'__len__'):
-    #             sind=ravel_multi_index(sind0,ds)  #sind0=[indy,indx]
-    #         else:
-    #             sind=sind0
-                
-    #         if not hasattr(sind,'__len__'): sind=array([sind])
-            
-    #         #format segs
-    #         if hasattr(seg,'__len__') and len(sind)!=len(seg): sys.exit('sind0 and seg: not same length')
-    #         if hasattr(seg,'__len__'):
-    #             segs=seg
-    #         else:
-    #             segs=ones(len(sind))*seg     
-                
-    #         #exclude watershed that was already claimed
-    #         fp=nonzero(self.seg[sind]==0)[0]
-    #         sind=sind[fp]; segs=segs[fp]
-        
-    #     #define sind and segs
-    #     if wlevel!=0: 
-    #         sind=sind0; segs=seg
-        
-    #     if len(sind)==0: return
-        
-    #     print('search upstream: {}, {}'.format(wlevel,len(sind)))
-    #     #save sind and segs    
-    #     self.sinds.append(sind)
-        
-    #     #searach watershed from downstream to upstream
-    #     self.get_neighbor_cells(sind,seg=segs,level=0,level_max=level_max)        
-        
-    #     #figure();imshow(C.seg.reshape(ds))
-    #     #continue search if level_max is reached
-    #     sind_next=nonzero(self.seg<0)[0]; seg_next=-self.seg[sind_next]
-    #     if len(sind_next)!=0:
-    #         self.search_watershed(sind_next,seg=seg_next,level_max=level_max,wlevel=wlevel+1)
-            
-    #     #search from upstream to downstream 
-    #     if wlevel==0: 
-    #         ds,seg,level_max=self.sinds[0]
-    #         ns=len(self.sinds)-1
-    #         for i in arange(ns):          
-    #             if segsort: continue
-    #             print('search downstream: {}, {}'.format(i,len(self.sinds[-i-1])))
-    #             self.get_neighbor_cells(self.sinds[-i-1],seg=0,level=0,level_max=level_max,acc_calc=True)        
-    #         delattr(self,'sinds')
-    
-    # def get_neighbor_cells(self,sind0,seg=0,level=0,level_max=100,acc_calc=False):
-    #     #determine watershed area first
-    #     if acc_calc==False:
-    #         if level!=level_max:
-    #             #get index_next                      
-    #             ind_next,seg_next=self.search_upstream(sind0,seg=seg)
-                            
-    #             #search index_next
-    #             self.get_neighbor_cells(ind_next,seg=seg_next,level=level+1,level_max=level_max,acc_calc=acc_calc)
-                
-    #             #assign seg number
-    #             self.seg[sind0]=seg
-    #         else:
-    #             #assign seg number
-    #             self.seg[sind0]=-seg
-         
-    #     #compuate accumlation
-    #     elif acc_calc==True:        
-    #         if level!=level_max: 
-    #             fpn=self.acc[sind0]==0; sind00=sind0[fpn]
-                
-    #             #get index_next                     
-    #             ind_next,fpt,fpf=self.search_upstream(sind00,ireturn=1)
-                
-    #             #get acc of index_next
-    #             if len(ind_next)!=0: 
-    #                 acc_next=self.get_neighbor_cells(ind_next,seg=None,level=level+1,level_max=level_max,acc_calc=acc_calc)                    
-    #             else:
-    #                 acc_next=0                
-                
-    #             #compute and assign acc in sind00
-    #             cc=zeros(len(sind00)*8); fcc=cc[fpt]; fcc[fpf]=acc_next; cc[fpt]=fcc
-    #             acc0=(reshape(cc,[8,len(sind00)]).sum(axis=0))+1                
-    #             self.acc[sind00]=acc0
-             
-    #         acc=self.acc[sind0]
-                     
-    #         return acc    
-
     def search_watershed_bnd(self,sind0=None):
         #search pts of boundary pts of watershed segment, sind0 are the initial index of segments
         
@@ -840,117 +720,39 @@ if __name__=="__main__":
     sys.setrecursionlimit(100000)
 
 
-#----new method for acc----------------
-    # S0=dem_dir(); S0.read_data('S1.npz'); S0.compute_extent(); 
-    # S=dem_dir(); S.dir=S0.dir; S.ds=S0.ds
-    
-    # sind0=ravel_multi_index(nonzero(S.dir==0),S.ds);   
-    
-    # t0=time.time(); 
-    # # S.search_upstream(sind0,ireturn=3,level_max=100)
-    # S.compute_acc2();
-    # dt=time.time()-t0
-    
-#-----------------------------------
-    # S=dem_dir(); S.read_data('S1.npz'); S.compute_extent();
-    
-    S0=dem_dir(); S0.read_data('S1.npz'); S0.compute_extent(); 
-    S=dem_dir(); S.dir=S0.dir; S.ds=S0.ds; S.affine=S0.affine; S.nodata=S0.nodata; S.extent=S0.extent
-    S.compute_acc();
-   
-    #check closed segments
-    # sind=nonzero(S.dir.ravel()==0)[0]; acc=S.acc.ravel()[sind];
-    
-    sind0=ravel_multi_index(nonzero((S.seg<=10)*(S.seg>0)*(S.dir==0)),S.ds);   
-    
-    sind_up=S.search_upstream(sind0,ireturn=6)
-    list_down=S.search_downstream(sind_up,ireturn=2)
-    list_up=S.search_upstream(sind0,ireturn=7)
-    
-    dyi,dxi=S.get_coordinates(sind0)
-    uyi,uxi=S.get_coordinates(sind_up)
+     
+#------------------------plot rivers-------------------------------------------
+    S=dem_dir(); S.read_data('S1.npz'); S.compute_extent();
+       
+    sind0=ravel_multi_index(nonzero((S.seg<=10)*(S.seg>0)*(S.dir==0)),S.ds);     
+    S.extract_river(sind0,acc_limit=1e4)
     
     figure(); 
     
-    subplot(2,1,1)
+    #plot acc
     imshow(S.acc,vmin=0,vmax=1e2,extent=S.extent)
     
+    #plot rivers
     for i in arange(len(sind0)):
-        sindi=list_down[i];
+        sindi=S.rivers[i];
         yi,xi=S.get_coordinates(sindi)
         
         fp=(xi==S.nodata)|(yi==S.nodata);
         xi[fp]=nan; yi[fp]=nan;
         
         plot(xi,yi,'r-')
-        
-    plot(dxi,dyi,'b*',uxi,uyi,'w*')
-        
-    subplot(2,1,2)
-    imshow(S.acc,vmin=0,vmax=1e2,extent=S.extent)
-    
-    colors='rgb'
-    for i in arange(len(sind0)):
-        sindi=list_up[i];
-        yi,xi=S.get_coordinates(sindi)
-        
-        fp=(xi==S.nodata)|(yi==S.nodata);
-        xi[fp]=nan; yi[fp]=nan;
-        
-        plot(xi,yi,'r-')
-    
-    plot(dxi,dyi,'b*',uxi,uyi,'w*')
 
-    
-    
-    
-     
-#------------------------plot watershed bnd------------------------------------
-    # S=dem_dir(); S.read_data('S1_0.npz'); S.compute_extent();
-   
-    # #check closed segments
-    # # sind=nonzero(S.dir.ravel()==0)[0]; acc=S.acc.ravel()[sind];
-    
-    # sind0=ravel_multi_index(nonzero((S.seg<=10)*(S.seg>0)*(S.dir==0)),S.ds); 
-    
-    # S.extract_river(sind0,acc_limit=1e2)
-    
-    # figure(); 
-    # imshow(S.acc,vmin=0,vmax=1e2,extent=S.extent)
-    
-    # for i in arange(len(sind0)):
-    #     sindi=S.rivers[i];
-    #     yi,xi=S.get_coordinates(sindi)
-        
-    #     fp=(xi==S.nodata)|(yi==S.nodata);
-    #     xi[fp]=nan; yi[fp]=nan;
-        
-    #     plot(xi,yi,'r-')
-         
-    
-    # sind0=ravel_multi_index(nonzero((S.seg==1)),S.ds);
-    # yi,xi=S.get_coordinates(sind0)
-    # plot(xi,yi,'g.')
- 
-#--------------------------plot river with catchment---------------------------
-    # S=dem_dir(); S.read_data('S2.npz')
-    
-    # #get xy
-    # sind=nonzero(S.dir.ravel()==0)[0]; acc=S.acc.ravel()[sind]; fpt=acc>1e6;
-    # yi,xi=S.get_coordinates(sind[fpt])
-    
-    # #plot
-    # figure(); 
-    # imshow(S.acc,vmin=0,vmax=1e5,extent=S.extent)
-    # plot(xi,yi,'r.')
-    
+    #plot river mouths
+    yi,xi=S.get_coordinates(sind0)
+    plot(xi,yi,'b*',ms=12)
+          
  
 #--------------------------precalculation--------------------------------------
     # # # # # # #--------------------------------------------------------------
     # # compute dir and acc, then save them
     # # fname='./13arcs/southern_louisiana_13_navd88_2010.asc';
     # # fname='ne_atl_crm_v1.asc'; sname='S2_0'
-    # fname='GEBCO.asc'; sname='S1_0'
+    # fname='GEBCO.asc'; sname='S1'
         
     # #read dem info
     # gds=read_deminfo(fname,'dem',size_subdomain=1e7); 
@@ -1005,7 +807,8 @@ if __name__=="__main__":
     #         S.dem=r_[S.dem,demi]
     
     # #save information
-    # S.nodata=gd.nodata; S.extent=gds.dem_info.extent; S.ds=S.dem.shape;  S.affine=[*gds.dem_info.affine]
+    # S.nodata=gd.nodata; S.ds=S.dem.shape; S.affine=[*gds.dem_info.affine]
+    # S.compute_extent();
     
     # #compute dir
     # t0=time.time();
@@ -1015,5 +818,42 @@ if __name__=="__main__":
     
     # S.save_data(sname,['dir','acc','seg','nodata','extent','ds','affine'])
     
-    # #--------------------------------------------------------------------------
+    
+#---------------test method "search_downstream---------------------------------
+    # S=dem_dir(); S.read_data('S1.npz'); S.compute_extent();
+    
+    # sind0=ravel_multi_index(nonzero((S.seg<=10)*(S.seg>0)*(S.dir==0)),S.ds);   
+    
+    # sind_up=S.search_upstream(sind0,ireturn=6)
+    # list_down=S.search_downstream(sind_up,ireturn=2)
+    # list_up=S.search_upstream(sind0,ireturn=7)
+    
+    # dyi,dxi=S.get_coordinates(sind0)
+    # uyi,uxi=S.get_coordinates(sind_up)
+    
+    # figure();     
+    # subplot(2,1,1)
+    # imshow(S.acc,vmin=0,vmax=1e2,extent=S.extent)
+    # plot(dxi,dyi,'b*',uxi,uyi,'w*')
+    # for i in arange(len(sind0)):
+    #     sindi=list_down[i];
+    #     yi,xi=S.get_coordinates(sindi)
+        
+    #     fp=(xi==S.nodata)|(yi==S.nodata);
+    #     xi[fp]=nan; yi[fp]=nan;
+        
+    #     plot(xi,yi,'r-')        
+    
+        
+    # subplot(2,1,2)
+    # imshow(S.acc,vmin=0,vmax=1e2,extent=S.extent)    
+    # plot(dxi,dyi,'b*',uxi,uyi,'w*')
+    # for i in arange(len(sind0)):
+    #     sindi=list_up[i];
+    #     yi,xi=S.get_coordinates(sindi)
+        
+    #     fp=(xi==S.nodata)|(yi==S.nodata);
+    #     xi[fp]=nan; yi[fp]=nan;
+        
+    #     plot(xi,yi,'r-')    
     
