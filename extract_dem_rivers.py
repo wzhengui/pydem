@@ -200,7 +200,7 @@ class dem_dir(object):
                 
         while len(sind)!=0:
             #search the largest stream
-            sind_list=self.search_upstream(sind,ireturn=6,acc_limit=acc_limit)
+            sind_list=self.search_upstream(sind,ireturn=7,acc_limit=acc_limit)
                                     
             #add rivers         
             for i in arange(slen):            
@@ -216,30 +216,47 @@ class dem_dir(object):
             pind=array(pind); pnum=array(pnum).astype('int')
         
             #create new sind
-            sind,pnum_ind=self.search_upstream(pind,ireturn=4,acc_limit=acc_limit)
+            sind,pnum_ind=self.search_upstream(pind,ireturn=5,acc_limit=acc_limit)
             slen=len(sind); num=pnum[pnum_ind];  pind0=pind[pnum_ind]
                     
         #format            
         for i in arange(len(sind0)):
             S.rivers[i]=array(S.rivers[i]).astype('int')        
         
+    # def compute_acc(self):        
+    #     #acc_max: compute acc and segments
+    #     if not hasattr(self,'dir'): sys.exit('dir not exist')
+        
+    #     #initialize acc
+    #     sind=nonzero(self.dir.ravel()==0)[0]; 
+    #     seg=arange(len(sind)).astype('int')+1
+    #     self.search_watershed(sind,seg=seg);  
+        
+    #     #reorder segment number
+    #     delattr(self,'seg')
+    #     acc=self.acc[sind]; ind=flipud(argsort(acc)); sind=sind[ind]; 
+    #     self.search_watershed(sind,seg=seg,segsort=True); 
+        
+    #     #reshape
+    #     self.acc=self.acc.reshape(self.ds)
+    #     self.seg=self.seg.reshape(self.ds)
+        
+    #     return
+    
     def compute_acc(self):        
         #acc_max: compute acc and segments
         if not hasattr(self,'dir'): sys.exit('dir not exist')
+
+        #all the catchments        
+        sind0=nonzero(self.dir.ravel()==0)[0];         
         
-        #initialize acc
-        sind=nonzero(self.dir.ravel()==0)[0]; 
-        seg=arange(len(sind)).astype('int')+1
-        self.search_watershed(sind,seg=seg);  
+        #initialize acc        
+        self.search_upstream(sind0,ireturn=3,level_max=100)
         
         #reorder segment number
-        delattr(self,'seg')
-        acc=self.acc[sind]; ind=flipud(argsort(acc)); sind=sind[ind]; 
-        self.search_watershed(sind,seg=seg,segsort=True); 
-        
-        #reshape
-        self.acc=self.acc.reshape(self.ds)
-        self.seg=self.seg.reshape(self.ds)
+        acc0=self.acc.ravel()[sind0]; ind=flipud(argsort(acc0)); sind=sind0[ind]; 
+        seg=arange(len(sind)).astype('int')+1
+        self.search_upstream(sind,ireturn=3,seg=seg,level_max=100) 
         
         return
                                 
@@ -273,8 +290,8 @@ class dem_dir(object):
                 
                 #for cells with dir==0 but no upstream cells
                 sind00=nonzero(self.dir==0)[0]
-                sind_up=self.search_upstream(sind00,ireturn=2)
-                fp=sind_up==0; sind00=sind00[fp]; 
+                num=self.search_upstream(sind00,ireturn=2)
+                fp=num==0; sind00=sind00[fp]; 
                 yind,xind=unravel_index(sind00,ds)
         
             for i in arange(nsub):
@@ -390,105 +407,105 @@ class dem_dir(object):
         #reshape
         self.dir=self.dir.reshape(ds)
         
-    def search_watershed(self,sind0,seg=1,level_max=100,wlevel=0,segsort=False):
-        #sind0: index of catchment pts. 
-        #example: sind0=nonzero(self.dir.ravel()==0)[0], or sind0=nonzero(self.dir==0)
-        #algorithm: two layer of recursive, to avoid errors, and improve efficiency
+    # def search_watershed(self,sind0,seg=1,level_max=100,wlevel=0,segsort=False):
+    #     #sind0: index of catchment pts. 
+    #     #example: sind0=nonzero(self.dir.ravel()==0)[0], or sind0=nonzero(self.dir==0)
+    #     #algorithm: two layer of recursive, to avoid errors, and improve efficiency
         
-        #assign variables
-        ds=self.dir.shape   
-        if wlevel==0:
-            if not hasattr(self,'seg'): self.seg=zeros(self.dir.size).astype('int')
-            if not hasattr(self,'acc'): self.acc=zeros(self.dir.size).astype('int')
-            self.sinds=[]; self.sinds.append([ds,seg,level_max])
-            #self.segs=[]; 
+    #     #assign variables
+    #     ds=self.dir.shape   
+    #     if wlevel==0:
+    #         if not hasattr(self,'seg'): self.seg=zeros(self.dir.size).astype('int')
+    #         if not hasattr(self,'acc'): self.acc=zeros(self.dir.size).astype('int')
+    #         self.sinds=[]; self.sinds.append([ds,seg,level_max])
+    #         #self.segs=[]; 
         
-            #convert index
-            if len(sind0)==2 and hasattr(sind0[0],'__len__'):
-                sind=ravel_multi_index(sind0,ds)  #sind0=[indy,indx]
-            else:
-                sind=sind0
+    #         #convert index
+    #         if len(sind0)==2 and hasattr(sind0[0],'__len__'):
+    #             sind=ravel_multi_index(sind0,ds)  #sind0=[indy,indx]
+    #         else:
+    #             sind=sind0
                 
-            if not hasattr(sind,'__len__'): sind=array([sind])
+    #         if not hasattr(sind,'__len__'): sind=array([sind])
             
-            #format segs
-            if hasattr(seg,'__len__') and len(sind)!=len(seg): sys.exit('sind0 and seg: not same length')
-            if hasattr(seg,'__len__'):
-                segs=seg
-            else:
-                segs=ones(len(sind))*seg     
+    #         #format segs
+    #         if hasattr(seg,'__len__') and len(sind)!=len(seg): sys.exit('sind0 and seg: not same length')
+    #         if hasattr(seg,'__len__'):
+    #             segs=seg
+    #         else:
+    #             segs=ones(len(sind))*seg     
                 
-            #exclude watershed that was already claimed
-            fp=nonzero(self.seg[sind]==0)[0]
-            sind=sind[fp]; segs=segs[fp]
+    #         #exclude watershed that was already claimed
+    #         fp=nonzero(self.seg[sind]==0)[0]
+    #         sind=sind[fp]; segs=segs[fp]
         
-        #define sind and segs
-        if wlevel!=0: 
-            sind=sind0; segs=seg
+    #     #define sind and segs
+    #     if wlevel!=0: 
+    #         sind=sind0; segs=seg
         
-        if len(sind)==0: return
+    #     if len(sind)==0: return
         
-        print('search upstream: {}, {}'.format(wlevel,len(sind)))
-        #save sind and segs    
-        self.sinds.append(sind)
+    #     print('search upstream: {}, {}'.format(wlevel,len(sind)))
+    #     #save sind and segs    
+    #     self.sinds.append(sind)
         
-        #searach watershed from downstream to upstream
-        self.get_neighbor_cells(sind,seg=segs,level=0,level_max=level_max)        
+    #     #searach watershed from downstream to upstream
+    #     self.get_neighbor_cells(sind,seg=segs,level=0,level_max=level_max)        
         
-        #figure();imshow(C.seg.reshape(ds))
-        #continue search if level_max is reached
-        sind_next=nonzero(self.seg<0)[0]; seg_next=-self.seg[sind_next]
-        if len(sind_next)!=0:
-            self.search_watershed(sind_next,seg=seg_next,level_max=level_max,wlevel=wlevel+1)
+    #     #figure();imshow(C.seg.reshape(ds))
+    #     #continue search if level_max is reached
+    #     sind_next=nonzero(self.seg<0)[0]; seg_next=-self.seg[sind_next]
+    #     if len(sind_next)!=0:
+    #         self.search_watershed(sind_next,seg=seg_next,level_max=level_max,wlevel=wlevel+1)
             
-        #search from upstream to downstream 
-        if wlevel==0: 
-            ds,seg,level_max=self.sinds[0]
-            ns=len(self.sinds)-1
-            for i in arange(ns):          
-                if segsort: continue
-                print('search downstream: {}, {}'.format(i,len(self.sinds[-i-1])))
-                self.get_neighbor_cells(self.sinds[-i-1],seg=0,level=0,level_max=level_max,acc_calc=True)        
-            delattr(self,'sinds')
+    #     #search from upstream to downstream 
+    #     if wlevel==0: 
+    #         ds,seg,level_max=self.sinds[0]
+    #         ns=len(self.sinds)-1
+    #         for i in arange(ns):          
+    #             if segsort: continue
+    #             print('search downstream: {}, {}'.format(i,len(self.sinds[-i-1])))
+    #             self.get_neighbor_cells(self.sinds[-i-1],seg=0,level=0,level_max=level_max,acc_calc=True)        
+    #         delattr(self,'sinds')
     
-    def get_neighbor_cells(self,sind0,seg=0,level=0,level_max=100,acc_calc=False):
-        #determine watershed area first
-        if acc_calc==False:
-            if level!=level_max:
-                #get index_next                      
-                ind_next,seg_next=self.search_upstream(sind0,seg=seg)
+    # def get_neighbor_cells(self,sind0,seg=0,level=0,level_max=100,acc_calc=False):
+    #     #determine watershed area first
+    #     if acc_calc==False:
+    #         if level!=level_max:
+    #             #get index_next                      
+    #             ind_next,seg_next=self.search_upstream(sind0,seg=seg)
                             
-                #search index_next
-                self.get_neighbor_cells(ind_next,seg=seg_next,level=level+1,level_max=level_max,acc_calc=acc_calc)
+    #             #search index_next
+    #             self.get_neighbor_cells(ind_next,seg=seg_next,level=level+1,level_max=level_max,acc_calc=acc_calc)
                 
-                #assign seg number
-                self.seg[sind0]=seg
-            else:
-                #assign seg number
-                self.seg[sind0]=-seg
+    #             #assign seg number
+    #             self.seg[sind0]=seg
+    #         else:
+    #             #assign seg number
+    #             self.seg[sind0]=-seg
          
-        #compuate accumlation
-        elif acc_calc==True:        
-            if level!=level_max: 
-                fpn=self.acc[sind0]==0; sind00=sind0[fpn]
+    #     #compuate accumlation
+    #     elif acc_calc==True:        
+    #         if level!=level_max: 
+    #             fpn=self.acc[sind0]==0; sind00=sind0[fpn]
                 
-                #get index_next                     
-                ind_next,fpt,fpf=self.search_upstream(sind00,ireturn=1)
+    #             #get index_next                     
+    #             ind_next,fpt,fpf=self.search_upstream(sind00,ireturn=1)
                 
-                #get acc of index_next
-                if len(ind_next)!=0: 
-                    acc_next=self.get_neighbor_cells(ind_next,seg=None,level=level+1,level_max=level_max,acc_calc=acc_calc)                    
-                else:
-                    acc_next=0                
+    #             #get acc of index_next
+    #             if len(ind_next)!=0: 
+    #                 acc_next=self.get_neighbor_cells(ind_next,seg=None,level=level+1,level_max=level_max,acc_calc=acc_calc)                    
+    #             else:
+    #                 acc_next=0                
                 
-                #compute and assign acc in sind00
-                cc=zeros(len(sind00)*8); fcc=cc[fpt]; fcc[fpf]=acc_next; cc[fpt]=fcc
-                acc0=(reshape(cc,[8,len(sind00)]).sum(axis=0))+1                
-                self.acc[sind00]=acc0
+    #             #compute and assign acc in sind00
+    #             cc=zeros(len(sind00)*8); fcc=cc[fpt]; fcc[fpf]=acc_next; cc[fpt]=fcc
+    #             acc0=(reshape(cc,[8,len(sind00)]).sum(axis=0))+1                
+    #             self.acc[sind00]=acc0
              
-            acc=self.acc[sind0]
+    #         acc=self.acc[sind0]
                      
-            return acc    
+    #         return acc    
 
     def search_watershed_bnd(self,sind0=None):
         #search pts of boundary pts of watershed segment, sind0 are the initial index of segments
@@ -505,14 +522,15 @@ class dem_dir(object):
         #search boundary index 
         self.search_segment_bnd(sind)
 
-    def search_upstream(self,sind0,ireturn=0,seg=None,acc_limit=0,wlevel=0,level=0,level_max=500):
+    def search_upstream(self,sind0,ireturn=0,seg=None,acc_limit=0,wlevel=0,level=0,level_max=500,acc_calc=False):
         #ireturn=0: all the 1-level upstream index. if seg is not None, return seg number (seg_up) also
         #ireturn=1: all the 1-level upstream index, also with flags of true neighbor and incoming flow
-        #ireturn=2: number of upstream indices        
-        #ireturn=3: just one-level upstream index with largest acc 
-        #ireturn=4: all the one-level upstream index except the one with largest acc, and numbering index
-        #ireturn=5: uppermost upstream index along the largest river stem
-        #ireturn=6: save all the cells along the largest upstream river
+        #ireturn=2: number of upstream indices 
+        #ireturn=3: search all upstreams, compute acc and seg
+        #ireturn=4: just one-level upstream index with largest acc 
+        #ireturn=5: all the one-level upstream index except the one with largest acc, and numbering index
+        #ireturn=6: uppermost upstream index along the largest river stem
+        #ireturn=7: save all the cells along the largest upstream river
              
         #--pre-define variables        
         slen=len(sind0); ds=self.ds
@@ -558,6 +576,78 @@ class dem_dir(object):
             num_up=(reshape(num,[8,slen]).sum(axis=0)).astype('int')
             return num_up
         
+        if ireturn==3:
+            if wlevel==0: #first level recursive search 
+                
+                #init
+                if seg is None: 
+                    seg0=arange(slen)+1
+                    self.acc=zeros(prod(ds)).astype('int')                                                  
+                else:
+                    seg0=seg
+                    
+                self.seg=zeros(prod(ds)).astype('int')                
+                self.sind_list=[]; 
+                self.seg_list=[];
+                self.flag_search=True
+                                    
+                self.sind_next=sind0.copy(); self.seg_next=seg0; 
+                self.sind_list.append(sind0); self.seg_list.append(seg0) 
+                      
+                #1-level search loop, from downstream to upstream
+                iflag=0
+                while self.flag_search:
+                    iflag=iflag+1
+                    print('search upstream: {}, {}'.format(iflag,len(self.sind_next)))
+                    if len(self.sind_next)==0: break
+                    self.search_upstream(self.sind_next,ireturn=ireturn,seg=self.seg_next, wlevel=1,level=0,level_max=level_max)
+                
+                #search from upstream to downstream on the 1-level
+                for i in arange(len(self.sind_list)):   
+                    if seg is not None: continue
+                    print('search downstream: {}, {}'.format(i,len(self.sind_list[-i-1])))
+                    self.search_upstream(self.sind_list[-i-1],ireturn=ireturn,seg=self.seg_list[-i-1], wlevel=1,level=0,level_max=level_max,acc_calc=True)
+                
+                #clean 
+                delattr(self,'sind_list');delattr(self,'seg_list'); delattr(self,'flag_search')
+                delattr(self,'sind_next'); delattr(self,'seg_next')
+                if seg is None: delattr(self,'seg')
+                    
+                #reshape
+                self.acc=self.acc.reshape(ds)                
+                if seg is not None: self.seg=self.seg.reshape(ds)
+                         
+            elif wlevel==1: #2-level recursive search    
+                #assign seg number
+                self.seg[sind0]=seg            
+               
+                acc_up=0; acc=0
+                if level!=level_max:    
+                    if len(sind_up)==0: #reach the end
+                        self.flag_search=False                        
+                    else:                                             
+                        acc_up=self.search_upstream(sind_up,ireturn=ireturn,seg=seg_up,wlevel=1,level=level+1,level_max=level_max,acc_calc=acc_calc) 
+                                         
+                else:
+                    if not acc_calc:
+                        self.sind_next=sind_up
+                        self.seg_next=seg_up
+                        self.sind_list.append(sind_up)                    
+                        self.seg_list.append(seg_up)
+                    else:
+                        acc_up=self.acc[sind_up]  
+                
+                if acc_calc:
+                    #compute acc for sind0
+                    #get flags of sind_up first                
+                    sind_up,fpt,fpf=self.search_upstream(sind0,ireturn=1)
+                    
+                    acc0=zeros(slen*8); facc=acc0[fpt]; facc[fpf]=acc_up; acc0[fpt]=facc
+                    acc=reshape(acc0,[8,slen]).sum(axis=0)+1                
+                    self.acc[sind0]=acc
+                
+                return acc   
+        
         #----------------------------------------------------------------------
         #code below works after self.acc is computed
         #----------------------------------------------------------------------
@@ -576,11 +666,11 @@ class dem_dir(object):
         sind_next=sind[iy,ix]
        
         #just one level
-        if ireturn==3:
+        if ireturn==4:
             return sind_next
         
         #one-level upstream, all the cells except the largest one
-        if ireturn==4:            
+        if ireturn==5:            
             sind[iy,ix]=0; fpn=sind!=0;
             nind0=tile(arange(slen),8).reshape([8,slen]).astype('int') 
             sind_next=sind[fpn]; nind=nind0[fpn]
@@ -588,13 +678,13 @@ class dem_dir(object):
         
         #get to the uppermost pts, using 2-level recursive search. 
         #1-level recursive search will crash reaching the setrecursionlimit
-        if ireturn==5 or ireturn==6:            
+        if ireturn==6 or ireturn==7:            
             if wlevel==0: #first level recursive
                 #init
-                if not hasattr(self,'sind_next'):
-                    self.sind_next=sind0.copy()
-                    self.flag_search=True
-                    self.sind_list=[[i] for i in sind0]                    
+                #if not hasattr(self,'sind_next'):
+                self.sind_next=sind0.copy()
+                self.flag_search=True
+                self.sind_list=[[i] for i in sind0]                    
                 
                 #1-level search loop
                 while self.flag_search:
@@ -609,9 +699,9 @@ class dem_dir(object):
                 #clean
                 delattr(self,'sind_next'); delattr(self,'flag_search'); delattr(self,'sind_list')
                 
-                if ireturn==5:
+                if ireturn==6:
                     return sind_next
-                elif ireturn==6:
+                elif ireturn==7:
                     return sind_list
                                      
             elif wlevel==1: #second level recursive search
@@ -620,7 +710,7 @@ class dem_dir(object):
                     if sum(fpz)==0:
                         #reach the end
                         fpn=self.sind_next>0; self.sind_next[fpn]=-sind0
-                        if ireturn==6:
+                        if ireturn==7:
                             ind_list=nonzero(fpn)[0]; sind_list=sind0
                             [self.sind_list[i].append(j) for i,j in zip(ind_list,sind_list)]
                         self.flag_search=False
@@ -628,7 +718,7 @@ class dem_dir(object):
                         #save the pts that reach the end
                         sind_next[~fpz]=-sind0[~fpz]
                         fpn=self.sind_next>0; self.sind_next[fpn]=sind_next
-                        if ireturn==6:
+                        if ireturn==7:
                             ind_list=nonzero(fpn)[0]; sind_list=abs(sind_next)
                             [self.sind_list[i].append(j) for i,j in zip(ind_list,sind_list)]
                         
@@ -750,51 +840,66 @@ if __name__=="__main__":
     sys.setrecursionlimit(100000)
 
 
+#----new method for acc----------------
+    # S0=dem_dir(); S0.read_data('S1.npz'); S0.compute_extent(); 
+    # S=dem_dir(); S.dir=S0.dir; S.ds=S0.ds
+    
+    # sind0=ravel_multi_index(nonzero(S.dir==0),S.ds);   
+    
+    # t0=time.time(); 
+    # # S.search_upstream(sind0,ireturn=3,level_max=100)
+    # S.compute_acc2();
+    # dt=time.time()-t0
+    
 #-----------------------------------
     # S=dem_dir(); S.read_data('S1.npz'); S.compute_extent();
+    
+    S0=dem_dir(); S0.read_data('S1.npz'); S0.compute_extent(); 
+    S=dem_dir(); S.dir=S0.dir; S.ds=S0.ds; S.affine=S0.affine; S.nodata=S0.nodata; S.extent=S0.extent
+    S.compute_acc();
    
-    # #check closed segments
-    # # sind=nonzero(S.dir.ravel()==0)[0]; acc=S.acc.ravel()[sind];
+    #check closed segments
+    # sind=nonzero(S.dir.ravel()==0)[0]; acc=S.acc.ravel()[sind];
     
-    # sind0=ravel_multi_index(nonzero((S.seg<=10)*(S.seg>0)*(S.dir==0)),S.ds);   
+    sind0=ravel_multi_index(nonzero((S.seg<=10)*(S.seg>0)*(S.dir==0)),S.ds);   
     
-    # sind_up=S.search_upstream(sind0,ireturn=5)
-    # list_down=S.search_downstream(sind_up,ireturn=2)
-    # list_up=S.search_upstream(sind0,ireturn=6)
+    sind_up=S.search_upstream(sind0,ireturn=6)
+    list_down=S.search_downstream(sind_up,ireturn=2)
+    list_up=S.search_upstream(sind0,ireturn=7)
     
-    # dyi,dxi=S.get_coordinates(sind0)
-    # uyi,uxi=S.get_coordinates(sind_up)
+    dyi,dxi=S.get_coordinates(sind0)
+    uyi,uxi=S.get_coordinates(sind_up)
     
-    # figure(); 
+    figure(); 
     
-    # subplot(2,1,1)
-    # imshow(S.acc,vmin=0,vmax=1e2,extent=S.extent)
+    subplot(2,1,1)
+    imshow(S.acc,vmin=0,vmax=1e2,extent=S.extent)
     
-    # for i in arange(len(sind0)):
-    #     sindi=list_down[i];
-    #     yi,xi=S.get_coordinates(sindi)
+    for i in arange(len(sind0)):
+        sindi=list_down[i];
+        yi,xi=S.get_coordinates(sindi)
         
-    #     fp=(xi==S.nodata)|(yi==S.nodata);
-    #     xi[fp]=nan; yi[fp]=nan;
+        fp=(xi==S.nodata)|(yi==S.nodata);
+        xi[fp]=nan; yi[fp]=nan;
         
-    #     plot(xi,yi,'r-')
+        plot(xi,yi,'r-')
         
-    # plot(dxi,dyi,'b*',uxi,uyi,'w*')
+    plot(dxi,dyi,'b*',uxi,uyi,'w*')
         
-    # subplot(2,1,2)
-    # imshow(S.acc,vmin=0,vmax=1e2,extent=S.extent)
+    subplot(2,1,2)
+    imshow(S.acc,vmin=0,vmax=1e2,extent=S.extent)
     
-    # colors='rgb'
-    # for i in arange(len(sind0)):
-    #     sindi=list_up[i];
-    #     yi,xi=S.get_coordinates(sindi)
+    colors='rgb'
+    for i in arange(len(sind0)):
+        sindi=list_up[i];
+        yi,xi=S.get_coordinates(sindi)
         
-    #     fp=(xi==S.nodata)|(yi==S.nodata);
-    #     xi[fp]=nan; yi[fp]=nan;
+        fp=(xi==S.nodata)|(yi==S.nodata);
+        xi[fp]=nan; yi[fp]=nan;
         
-    #     plot(xi,yi,'r-')
+        plot(xi,yi,'r-')
     
-    # plot(dxi,dyi,'b*',uxi,uyi,'w*')
+    plot(dxi,dyi,'b*',uxi,uyi,'w*')
 
     
     
