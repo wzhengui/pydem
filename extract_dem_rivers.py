@@ -188,11 +188,33 @@ class dem_dir(object):
             exec('S.{}=self.{}'.format(svar,svar))
         save_npz(fname,S)
         
-    def extract_river(self,sind0,acc_limit=1e4,nodata=None):                       
+    def compute_river(self,seg=None,sind=None,acc_limit=1e4,nodata=None):   
+        #compute river network for watersheds 
+        #seg is segment number, sind is catchment indices. 
+        
+        #compute river mouths        
+        if sind is not None:
+            sind0=sind.copy(); seg0=self.seg.ravel()[sind0]
+
+        if seg is not None: #may rewrite sind
+            if hasattr(seg,'__len__'):
+                seg=array(seg)
+            else:
+                seg=array([seg,])
+                
+            sind0=nonzero(self.dir.ravel()==0)[0]; seg0=self.seg.ravel()[sind0]
+            seg_in,ia,ib=intersect1d(seg,seg0,return_indices=True)
+            seg0=seg0[ib]; sind0=sind0[ib];
+        
+        if (sind is None) and (seg is None):
+            sind0=nonzero(self.dir.ravel()==0)[0]; seg0=self.seg.ravel()[sind0]
+                    
         #pre-define varibles, will update in the loop
         if nodata is None: nodata=self.nodata
         sind=sind0; slen=len(sind); 
         num=arange(slen).astype('int'); pind0=None; 
+        
+        print('computing river network')
         
         #each pts cooresponding to a river network
         self.rivers=[[] for i in arange(len(sind0))]; 
@@ -218,12 +240,104 @@ class dem_dir(object):
             sind,pnum_ind=self.search_upstream(pind,ireturn=5,acc_limit=acc_limit)
             slen=len(sind); num=pnum[pnum_ind];  pind0=pind[pnum_ind]
                     
-        #format            
+        #format
+        inum=[]
         for i in arange(len(sind0)):
-            S.rivers[i]=array(S.rivers[i]).astype('int')        
+            self.rivers[i]=array(self.rivers[i]).astype('int')
+            if len(self.rivers[i])>3: inum.append(i)
+        self.rivers=array(self.rivers); inum=array(inum)
+            
+        #exclude rivers with len<3
+        self.rivers=self.rivers[inum]
+        if not hasattr(self,'info'): self.info=npz_data()
+        self.info.rseg=seg0[inum]
+        self.info.rind=sind0[inum]
         
     
-    def compute_acc(self):        
+    def compute_boundary(self,seg=None,sind=None,acc_limit=None,level_max=500):
+                        
+        #pre-define variables
+        ds=self.ds; ym,xm=ds
+        
+        print('computing watershed boundary')
+         
+        #compute river mouths        
+        if sind is not None:
+            sind0=sind.copy(); seg0=self.seg.ravel()[sind0]
+
+        if seg is not None: #may rewrite sind
+            if hasattr(seg,'__len__'):
+                seg=array(seg)
+            else:
+                seg=array([seg,])
+                
+            sind0=nonzero(self.dir.ravel()==0)[0]; seg0=self.seg.ravel()[sind0]
+            seg_in,ia,ib=intersect1d(seg,seg0,return_indices=True)
+            seg0=seg0[ib]; sind0=sind0[ib];
+        
+        if (sind is None) and (seg is None):
+            sind0=nonzero(self.dir.ravel()==0)[0]; seg0=self.seg.ravel()[sind0]
+        
+        #compute watershed bnd
+        sind=sind0.copy()
+        
+        #exclude pts with acc<acc_limit
+        if acc_limit is not None:
+            fpa=self.acc.ravel()[sind]>=acc_limit
+            sind=sind[fpa]; seg=seg0[fpa]
+        
+        #already on the boundary
+        iy0,ix0=unravel_index(sind,ds); 
+        fpn=~((iy0==(ym-1))|(ix0==(xm-1))|(iy0==0)|(ix0==0))        
+        
+        #search for bounary elements, upward
+        sindn=sind[fpn]; segn=self.seg.ravel()[sindn]
+        inum=arange(len(sindn)).astype('int'); offset=ds[1]
+        while len(inum)!=0:
+            sind_next=sindn[inum]-offset
+            seg_next=self.seg.ravel()[sind_next]
+            iy,ix=unravel_index(sind_next,ds)
+                        
+            #reach the domain boundary
+            fp1=(seg_next==segn[inum])*((iy==(ym-1))|(ix==(xm-1))|(iy==0)|(ix==0))
+            
+            #already the boudary
+            fp2=seg_next!=segn[inum]
+            sind_next[fp2]=sindn[inum][fp2]
+            
+            #exclude fp1 and fp2
+            sindn[inum]=sind_next
+            inum=inum[~(fp1|fp2)]        
+        
+        #westward
+    
+        inum=arange(len(sindn)).astype('int'); offset=1
+        while len(inum)!=0:
+            sind_next=sindn[inum]-offset
+            seg_next=self.seg.ravel()[sind_next]
+            iy,ix=unravel_index(sind_next,ds)
+                        
+            #reach the domain boundary
+            fp1=(seg_next==segn[inum])*((iy==(ym-1))|(ix==(xm-1))|(iy==0)|(ix==0))
+            
+            #already the boudary
+            fp2=seg_next!=segn[inum]
+            sind_next[fp2]=sindn[inum][fp2]
+            
+            #exclude fp1 and fp2
+            sindn[inum]=sind_next
+            inum=inum[~(fp1|fp2)]      
+            
+        sind[fpn]=sindn
+                   
+        #search boundary
+        self.boundary=self.search_boundary(sind,level_max=level_max)  
+        
+        #add boundary info        
+        if not hasattr(self,'info'): self.info=npz_data()
+        self.info.bseg=seg
+    
+    def compute_watershed(self):        
         #acc_max: compute acc and segments
         if not hasattr(self,'dir'): sys.exit('dir not exist')
 
@@ -387,21 +501,101 @@ class dem_dir(object):
         #reshape
         self.dir=self.dir.reshape(ds)
         
-    def search_watershed_bnd(self,sind0=None):
+    def search_boundary(self,sind0,wlevel=0,level=0,level_max=500):
         #search pts of boundary pts of watershed segment, sind0 are the initial index of segments
         
-        #check index
-        if sind0 is None:
-            sind=sind0
-        else:
-            sind=nonzero(self.dir.ravel()==0)[0]
-            
-        #check closed segments
-        sind_next=self.search_upstream(sind,self.ds,ireturn=2)
+        #pre-defind variables
+        slen=len(sind0); ds=self.ds
+        # print(sind0)
+        iy0,ix0=unravel_index(sind0,ds)
+        seg0=self.seg.ravel()[sind0]
         
-        #search boundary index 
-        self.search_segment_bnd(sind)
+        #construct matrix
+        yind=r_[iy0-1,iy0-1,iy0-1,iy0,iy0+1,iy0+1,iy0+1,iy0]
+        xind=r_[ix0+1,ix0,ix0-1,ix0-1,ix0-1,ix0,ix0+1,ix0+1]
+        sind=zeros(8*slen).astype('int'); seg=sind.copy()
+                
+        #true neighbor
+        fpt=nonzero((xind>=0)*(xind<ds[1])*(yind>=0)*(yind<ds[0]))[0]
+        sind_true=ravel_multi_index([yind[fpt],xind[fpt]],ds); 
+        sind[fpt]=sind_true; seg[fpt]=self.seg.ravel()[sind_true]
+        
+        #indices belong to the same segment
+        fps=seg!=tile(seg0,8); sind[fps]=0
+        
+        #exclude previous cells
+        # if hasattr(self,'pind'): fpn=sind==tile(self.pind,8); sind[fpn]=0
+        if hasattr(self,'ppind'): fpn=sind==tile(self.ppind,8); sind[fpn]=0
+        
+        sind=sind.reshape([8,slen])
+        
+        iy0=zeros(slen).astype('int'); 
+        if hasattr(self,'pind'):
+            pind=self.pind
+        else:
+            pind=0
+        #find the starting search pt
+        for i in arange(8):
+            fp=sind[i,:]==pind
+            iy0[fp]=i
+        
+        #find the next pts
+        sind_next=zeros(slen).astype('int')
+        ix=arange(slen).astype('int')
+        for i in arange(8):
+            iy0=iy0+1
+            iy1=mod(iy0,8); iy2=mod(iy0+1,8)
+            fpn=(sind[iy1,ix]==0)*(sind[iy2,ix]!=0)*(sind_next==0)
+            sind_next[fpn]=sind[iy2,ix][fpn]
+        
+        #if sind_next=0, search back
+        fpb=sind_next==0; sind_next[fpb]=sind0[fpb]      
+              
+        #recursive search 
+        if wlevel==0:
+            #init
+            self.sind_next=sind0.copy()
+            self.sind0=sind0.copy()
+            self.pind=sind0.copy() #previous pts
+            self.ppind=sind0.copy() #previous pts
+            self.flag_search=True
+            self.sind_list=[[i] for i in sind0]
+            self.snum=arange(slen).astype('int')
+            
+            #1-level search loop
+            iflag=0
+            while self.flag_search:                
+                iflag=iflag+1;
+                if len(self.sind_next)==0: break
+                self.search_boundary(self.sind_next,wlevel=1,level=0,level_max=level_max)
+                #print('search bnd: {}'.format(iflag*level_max))
+                
+            #save list info
+            sind_list=array([array(i) for i in self.sind_list])
+            
+            #clean
+            delattr(self,'sind_next'); delattr(self,'sind0'); delattr(self,'flag_search')
+            delattr(self,'sind_list'); delattr(self,'snum'); delattr(self,'pind');delattr(self,'ppind');
+            
+            return sind_list
+            
+        elif wlevel==1:
+            fpz=sind_next!=self.sind0
+            if sum(fpz)==0: self.flag_search=False
+            if (level!=level_max) and sum(fpz)!=0: #not reach the end                                
+                self.sind0=self.sind0[fpz]
+                self.snum=self.snum[fpz]
+                self.ppind=self.pind[fpz]
+                self.pind=self.sind_next[fpz]
+                self.sind_next=sind_next[fpz]
+                
+                #save pts to the list    
+                [self.sind_list[i].append(j) for i,j in zip(self.snum,self.sind_next)]
+                
+                #continue search
+                self.search_boundary(self.sind_next,wlevel=1,level=level+1,level_max=level_max)
 
+                                     
     def search_upstream(self,sind0,ireturn=0,seg=None,acc_limit=0,wlevel=0,level=0,level_max=500,acc_calc=False):
         #ireturn=0: all the 1-level upstream index. if seg is not None, return seg number (seg_up) also
         #ireturn=1: all the 1-level upstream index, also with flags of true neighbor and incoming flow
@@ -411,6 +605,7 @@ class dem_dir(object):
         #ireturn=5: all the one-level upstream index except the one with largest acc, and numbering index
         #ireturn=6: uppermost upstream index along the largest river stem
         #ireturn=7: save all the cells along the largest upstream river
+        #ireturn=8: return how many neighbors with same segment number after acc and seg are known
              
         #--pre-define variables        
         slen=len(sind0); ds=self.ds
@@ -453,6 +648,13 @@ class dem_dir(object):
         
         if ireturn==2:
             num=zeros(slen*8); fnum=num[fpt]; fnum[fpf]=1; num[fpt]=fnum; 
+            num_up=(reshape(num,[8,slen]).sum(axis=0)).astype('int')
+            return num_up
+        
+        if ireturn==8:
+            seg0=self.seg.ravel()[sind0]
+            fps=tile(seg0,8)[fpt]!=self.seg.ravel()[sind_true]
+            num=zeros(slen*8); fnum=ones(len(fpt)); fnum[fps]=0; num[fpt]=fnum
             num_up=(reshape(num,[8,slen]).sum(axis=0)).astype('int')
             return num_up
         
@@ -719,22 +921,21 @@ if __name__=="__main__":
     close('all')
     sys.setrecursionlimit(100000)
 
+#------------------------plot rivers and seg boundary--------------------------
+    S=dem_dir(); S.read_data('S1.npz'); 
+    
+    acc_limit=5e3; seg=arange(1,10)
+    S.compute_river(seg,acc_limit=acc_limit)
+    S.compute_boundary(seg,acc_limit=acc_limit)
+    
 
-     
-#------------------------plot rivers-------------------------------------------
-    S=dem_dir(); S.read_data('S1.npz'); S.compute_extent();
-       
-    sind0=ravel_multi_index(nonzero((S.seg<=10)*(S.seg>0)*(S.dir==0)),S.ds);     
-    S.extract_river(sind0,acc_limit=1e4)
-    
-    figure(); 
-    
+    figure();        
     #plot acc
-    imshow(S.acc,vmin=0,vmax=1e2,extent=S.extent)
+    imshow(S.acc,vmin=0,vmax=5e3,extent=S.extent)
     
     #plot rivers
-    for i in arange(len(sind0)):
-        sindi=S.rivers[i];
+    for i in arange(len(S.rivers)):
+        sindi=S.rivers[i].copy();
         yi,xi=S.get_coordinates(sindi)
         
         fp=(xi==S.nodata)|(yi==S.nodata);
@@ -743,9 +944,21 @@ if __name__=="__main__":
         plot(xi,yi,'r-')
 
     #plot river mouths
-    yi,xi=S.get_coordinates(sind0)
+    yi,xi=S.get_coordinates(S.info.rind)
     plot(xi,yi,'b*',ms=12)
-          
+    
+    #plot seg boundary
+    colors='www'
+    for i in arange(len(S.boundary)):
+        sindi=S.boundary[i];
+        # sindi=array(S.sind_list[i])
+        yi,xi=S.get_coordinates(array(sindi))
+        
+        fp=(xi==S.nodata)|(yi==S.nodata);
+        xi[fp]=nan; yi[fp]=nan;
+        
+        plot(xi,yi,color=colors[mod(i,3)],lw=1)
+    
  
 #--------------------------precalculation--------------------------------------
     # # # # # # #--------------------------------------------------------------
@@ -813,7 +1026,7 @@ if __name__=="__main__":
     # #compute dir
     # t0=time.time();
     # S.compute_dir(S.dem,nodata=S.nodata);
-    # S.compute_acc()
+    # S.compute_watershed()
     # dt=time.time()-t0
     
     # S.save_data(sname,['dir','acc','seg','nodata','extent','ds','affine'])
