@@ -188,7 +188,7 @@ class dem_dir(object):
             exec('S.{}=self.{}'.format(svar,svar))
         save_npz(fname,S)
         
-    def compute_river(self,seg=None,sind=None,acc_limit=1e4,nodata=None):   
+    def compute_river(self,seg=None,sind=None,acc_limit=1e4,nodata=None,apply_mask=False):   
         #compute river network for watersheds 
         #seg is segment number, sind is catchment indices. 
         
@@ -243,7 +243,20 @@ class dem_dir(object):
         #format
         inum=[]
         for i in arange(len(sind0)):
-            self.rivers[i]=array(self.rivers[i]).astype('int')
+            river=array(self.rivers[i]).astype('int')            
+            #apply mask
+            if apply_mask:
+                fpm=self.mask.ravel()[river]
+                river[~fpm]=self.nodata
+                
+                #only one nodata in between
+                nind=nonzero(river==self.nodata)[0]; dind=diff(nind); 
+                fpd=nonzero(dind==1)[0]+1; nind=nind[fpd]
+                
+                fpn=ones(len(river)).astype('bool'); fpn[nind]=False;  
+                river=river[fpn]                
+                
+            self.rivers[i]=river
             if len(self.rivers[i])>3: inum.append(i)
         self.rivers=array(self.rivers); inum=array(inum)
             
@@ -892,18 +905,19 @@ class dem_dir(object):
     def get_coordinates(self,sind0,affine=None,ds=None,nodata=None):     
         #example: sind0=nonzero(self.dir.ravel()==0)[0], or sind0=nonzero(self.dir==0)
         
+        sind=sind0.copy()
         #check parameters first
         if ds is None: ds=self.ds
         if affine is None: affine=self.affine
         if nodata is None: nodata=self.nodata
         
         #check index
-        if len(sind0)==2 and hasattr(sind0[0],'__len__'):            
-            indy,indx=sind0  #sind0=[indy,indx]            
+        if len(sind)==2 and hasattr(sind[0],'__len__'):            
+            indy,indx=sind  #sind0=[indy,indx]            
             fpn=(indy==nodata)|(indx==nodata)
         else:
-            fpn=sind0==nodata; sind0[fpn]=0;
-            indy,indx=unravel_index(sind0,ds)
+            fpn=sind0==nodata; sind[fpn]=0;
+            indy,indx=unravel_index(sind,ds)
             indy[fpn]=nodata; indx[fpn]=nodata
             
         #convert index to coordinates
@@ -915,64 +929,67 @@ class dem_dir(object):
         xi[fpn]=nodata; yi[fpn]=nodata
         
         return yi,xi
-                    
+    
+    def write_shapefile(self,data,sname,stype='POLYLINE',prjname='epsg:4326',attname=None,attvalue=None):
+        #data: string name or data
+        #sname: shapefile name
+        
+        #get data
+        S=npz_data()
+        if type(data)==type(''):
+            exec('S.data=self.{}'.format(data))
+        else:
+            S.data=data
+        
+        #get type and prj
+        S.type=stype
+        S.prj=get_prj_file(prjname)
+        
+        #get attrs
+        if (attname is not None) and (attvalue is not None):
+            S.attname=attname
+            S.attvalue=attvalue
+        
+        #get xy
+        S.xy=[];
+        for i in arange(len(S.data)):            
+            yi,xi=self.get_coordinates(S.data[i])
+            fp=(xi==self.nodata)|(yi==self.nodata);
+            xi[fp]=nan; yi[fp]=nan;            
+            S.xy.append(c_[xi,yi])
+        S.xy=array(S.xy)
+        
+        #write shapefile
+        write_shapefile_data(sname,S)
+                       
          
 if __name__=="__main__":    
     close('all')
     sys.setrecursionlimit(100000)
+    
+#------write shapefile---------------------------------------------------------
+    S=dem_dir(); S.read_data('S4.npz'); 
+    acc_limit=1e3; seg=arange(1,1e5)
+    S.compute_river(seg,acc_limit=acc_limit,apply_mask=True)
+    S.write_shapefile('rivers','D_0_rivers')
+    # S.compute_boundary(seg,acc_limit=acc_limit)            
+    # S.write_shapefile('boundary','B_boundary')    
 
-#------------------------plot rivers and seg boundary--------------------------
-    S=dem_dir(); S.read_data('S1.npz'); 
-    
-    acc_limit=5e3; seg=arange(1,10)
-    S.compute_river(seg,acc_limit=acc_limit)
-    S.compute_boundary(seg,acc_limit=acc_limit)
-    
-
-    figure();        
-    #plot acc
-    imshow(S.acc,vmin=0,vmax=5e3,extent=S.extent)
-    
-    #plot rivers
-    for i in arange(len(S.rivers)):
-        sindi=S.rivers[i].copy();
-        yi,xi=S.get_coordinates(sindi)
-        
-        fp=(xi==S.nodata)|(yi==S.nodata);
-        xi[fp]=nan; yi[fp]=nan;
-        
-        plot(xi,yi,'r-')
-
-    #plot river mouths
-    yi,xi=S.get_coordinates(S.info.rind)
-    plot(xi,yi,'b*',ms=12)
-    
-    #plot seg boundary
-    colors='www'
-    for i in arange(len(S.boundary)):
-        sindi=S.boundary[i];
-        # sindi=array(S.sind_list[i])
-        yi,xi=S.get_coordinates(array(sindi))
-        
-        fp=(xi==S.nodata)|(yi==S.nodata);
-        xi[fp]=nan; yi[fp]=nan;
-        
-        plot(xi,yi,color=colors[mod(i,3)],lw=1)
-    
- 
 #--------------------------precalculation--------------------------------------
     # # # # # # #--------------------------------------------------------------
     # # compute dir and acc, then save them
-    # # fname='./13arcs/southern_louisiana_13_navd88_2010.asc';
-    # # fname='ne_atl_crm_v1.asc'; sname='S2_0'
-    # fname='GEBCO.asc'; sname='S1'
+    # fname='./13arcs/southern_louisiana_13_navd88_2010.asc'; sname='S3'
+    # # fname='ne_atl_crm_v1.asc'; sname='S2'
+    # # fname='GEBCO.asc'; sname='S1'
         
     # #read dem info
     # gds=read_deminfo(fname,'dem',size_subdomain=1e7); 
     # gds.add_deminfo(fname,'dem0',size_subdomain=1e9); 
     
     # #read all data first
-    # gds.read_dem_data('dem0')    
+    # gds.read_dem_data('dem0')  
+    
+    # flat_option=0
 
     # S=dem_dir();
     # #reconstrcut data from subdomains
@@ -987,18 +1004,26 @@ if __name__=="__main__":
     #         gd=gds.dem_data[0]
                 
     #         #processing raw data
-    #         try:                
-    #             gd.fill_depressions(gd.data, out_name='fdem')
-    #             try:
-    #                 gd.resolve_flats(gd.fdem,'flats')
+    #         if flat_option==0:
+    #             try:                
+    #                 gd.fill_depressions(gd.data, out_name='fdem')
+    #                 try:
+    #                     gd.resolve_flats(gd.fdem,'flats')
+    #                 except:
+    #                     gd.flats=gd.fdem
     #             except:
+    #                 try:
+    #                     gd.resolve_flats(gd.data,'flats')
+    #                 except:
+    #                     gd.flats=gd.data
+    #         elif flat_option==1:
+    #             #don't use resolve flats
+    #             try:                
+    #                 gd.fill_depressions(gd.data, out_name='fdem')    
     #                 gd.flats=gd.fdem
-    #         except:
-    #             try:
-    #                 gd.resolve_flats(gd.data,'flats')
-    #             except:
+    #             except:      
     #                 gd.flats=gd.data
-                                    
+            
     #         #local data
     #         ixy=gds.dem_info.domains[id].rind            
     #         demii=array(gd.flats[ixy[0]:ixy[1],ixy[2]:ixy[3]])
@@ -1022,14 +1047,55 @@ if __name__=="__main__":
     # #save information
     # S.nodata=gd.nodata; S.ds=S.dem.shape; S.affine=[*gds.dem_info.affine]
     # S.compute_extent();
-    
+        
     # #compute dir
     # t0=time.time();
     # S.compute_dir(S.dem,nodata=S.nodata);
     # S.compute_watershed()
     # dt=time.time()-t0
     
-    # S.save_data(sname,['dir','acc','seg','nodata','extent','ds','affine'])
+    # # S.save_data(sname,['dir','acc','seg','nodata','extent','ds','affine'])
+    # #add mask
+    # S.mask=(S.dem>=0)*(S.dem<=50)
+    # S.save_data(sname,['dir','acc','seg','nodata','extent','ds','affine','mask'])
+    
+#------------------------plot rivers and seg boundary--------------------------
+    # S=dem_dir(); S.read_data('S1.npz'); 
+    
+    # acc_limit=5e3; seg=arange(1,10)
+    # S.compute_river(seg,acc_limit=acc_limit)
+    # S.compute_boundary(seg,acc_limit=acc_limit)
+    
+
+    # figure();        
+    # #plot acc
+    # imshow(S.acc,vmin=0,vmax=5e3,extent=S.extent)
+    
+    # #plot rivers
+    # for i in arange(len(S.rivers)):
+    #     sindi=S.rivers[i].copy();
+    #     yi,xi=S.get_coordinates(sindi)
+        
+    #     fp=(xi==S.nodata)|(yi==S.nodata);
+    #     xi[fp]=nan; yi[fp]=nan;
+        
+    #     plot(xi,yi,'r-')
+
+    # #plot river mouths
+    # yi,xi=S.get_coordinates(S.info.rind)
+    # plot(xi,yi,'b*',ms=12)
+    
+    # #plot seg boundary
+    # colors='www'
+    # for i in arange(len(S.boundary)):
+    #     sindi=S.boundary[i];
+    #     # sindi=array(S.sind_list[i])
+    #     yi,xi=S.get_coordinates(array(sindi))
+        
+    #     fp=(xi==S.nodata)|(yi==S.nodata);
+    #     xi[fp]=nan; yi[fp]=nan;
+        
+    #     plot(xi,yi,color=colors[mod(i,3)],lw=1)    
     
     
 #---------------test method "search_downstream---------------------------------
