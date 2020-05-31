@@ -367,40 +367,40 @@ class dem_dir(object):
         
         return
                                 
-    def compute_dir(self,data='dem',nodata=-9999,subdomain_size=1e6): 
+    def compute_dir(self,data='dem',outname='dir',subdomain_size=1e5,zlimit=0,method=0):
+        #when diff(dem)<zlimit, regard them the same elevation
+        #method=0: don't assign dir to flat cells; method=1: assign dir to flat cells
+        
         #dem data
-        if type(data)==str: 
-            exect('self._temp=self.{}'.format(data));
-            dem=self._temp; delattr(self,'_temp')
+        if type(data)==str: #assume data is dem
+            self.dem=self.dem.ravel()
+            dem0=self.dem
         else:
-            dem=data
+            dem0=data.ravel()
             
         #pre-calculation                
-        ds=dem.shape; ym,xm=ds; nsize=prod(ds); nlim=subdomain_size
-        self.dir=zeros(nsize).astype('int32')
-        nsubdomain=round(nsize/nlim)
+        ds=self.ds; ym,xm=ds; nsize=prod(ds); nlim=subdomain_size
+        dir=zeros(nsize).astype('int32'); nodata=self.nodata
+        nsubdomain=int(max(round(nsize/nlim),1))
         
-        offsets_all=array([1,-xm+1,-xm,-xm-1,-1,xm-1,xm,xm+1])
-        ndirs_all=array([1,128,64,32,16,8,4,2])
-        pdirs_all=array([16,8,4,2,1,128,64,32])
+        #convert nan to nodata
+        if isnan(nodata):
+            nodata=-99999
+            fpn=isnan(dem0)
+            dem0[fpn]=nodata
+            
+        offsets_all=array([1,-xm,-1,xm, -xm+1,-xm-1,xm-1,xm+1])
+        ndirs_all=array([1, 64, 16, 4, 128, 32, 8,  2])
+        pdirs_all=array([16, 4,  1, 64, 8,   2, 128,32])
            
-        #calculate dir for each subdomain
-        dem=dem.ravel();
-        
-        for it in arange(4):
+        #calculate dir for each subdomain      
+        for it in arange(3):
             if it==0: 
                 nsub=nsubdomain #for subdomain
-            elif it==1 or it==2:
-                nsub=4 #for 4 sides and 4 corners
-            elif it==3:
-                nsub=6 #fill_depression
-                
-                #for cells with dir==0 but no upstream cells
-                sind00=nonzero(self.dir==0)[0]
-                num=self.search_upstream(sind00,ireturn=2)
-                fp=num==0; sind00=sind00[fp]; 
-                yind,xind=unravel_index(sind00,ds)
-        
+            else:
+                nsub=4 #for 4 sides and 4 corners   
+
+            #for each section   
             for i in arange(nsub):
                 if it==0:
                     #get index for subdomain
@@ -412,107 +412,287 @@ class dem_dir(object):
                 elif it==1:
                     #get index for each side
                     if i==0:
-                        sind0=arange(1,xm-1); 
-                        flag=array([0,4,5,6,7])
+                        sind0=arange(1,xm-1);                       
+                        flag=array([0,2,3,6,7 ])
                     elif i==1:
                         sind0=arange(1,xm-1)+(ym-1)*xm; 
-                        flag=array([0,1,2,3,4])
+                        flag=array([0,1,2,4,5])
                     elif i==2:
                         sind0=arange(1,ym-1)*xm
-                        flag=array([0,1,2,6,7])
+                        flag=array([0,1,3,4,7])
                     elif i==3:
-                        sind0=arange(1,ym-1)*xm+(xm-2)
-                        flag=array([2,3,4,5,6])
-                    self.dir[sind0]=0
+                        sind0=arange(1,ym-1)*xm+(xm-1)                        
+                        flag=array([1,2,3,5,6])
+                    dir[sind0]=0
                 elif it==2:
                     #get index for each corner
                     if i==0:
                         sind0=array([0])
-                        flag=array([0,6,7])
+                        flag=array([0,3,7])
                     elif i==1:
-                        sind0=array([xm-1])
-                        flag=array([4,5,6])
+                        sind0=array([xm-1])                        
+                        flag=array([2,3,6])
                     elif i==2:
                         sind0=array([(ym-1)*xm])
-                        flag=array([0,1,2])
+                        flag=array([0,1,4])
                     elif i==3:
-                        sind0=array([nsize-1])
-                        flag=array([2,3,4])
-                    self.dir[sind0]=0
-                elif it==3:                    
-                        if i==0: #for cells inside
-                            fp=(xind>0)*(xind<(xm-1))*(yind>0)*(yind<(ym-1))
-                            sind0=sind00[fp]                                                        
-                            flag=arange(8)
-                        elif i==1: #for side
-                            fp=(xind>0)*(xind<(xm-1))*(yind==0)
-                            sind0=sind00[fp] 
-                            flag=array([0,4,5,6,7])
-                        elif i==2:
-                            fp=(xind>0)*(xind<(xm-1))*(yind==(ym-1))
-                            sind0=sind00[fp] 
-                            flag=array([0,1,2,3,4])
-                        elif i==3:
-                            fp=(yind>0)*(yind<(ym-1))*(xind==0)
-                            sind0=sind00[fp] 
-                            flag=array([0,1,2,6,7])
-                        elif i==4:
-                            fp=(yind>0)*(yind<(ym-1))*(xind==(xm-1))
-                            sind0=sind00[fp]
-                            flag=array([2,3,4,5,6])
-                        elif i==5: #for 4 corners
-                            sind0=array([0,xm-1,(ym-1)*xm,nsize-1])
-                            dir0=array([2,8,128,32])
-                            for ii in arange(4):
-                                if sind0[ii] in sind00: self.dir[sind0[ii]]=dir0[ii] 
-                            continue
-                        
-                        if len(sind0)==0: continue
+                        sind0=array([nsize-1])                        
+                        flag=array([1,2,5])
+                    dir[sind0]=0
                                                 
                 #begin compute dir-----------------------------------------------
                 #define offsets for each sid-e
                 offsets=offsets_all[flag]
                 ndirs=ndirs_all[flag]
-                pdirs=pdirs_all[flag]
+                #pdirs=pdirs_all[flag]
                                
                 #exclude nodata
-                fp=array(dem[sind0]!=nodata);  self.dir[sind0[~fp]]=-1
-                sind0=sind0[fp]; dem0=dem[sind0]; 
-                if len(sind0)==0: continue
+                sdem=dem0[sind0]; 
+                fp=sdem!=nodata; dir[sind0[~fp]]=-1                
+                sind=sind0[fp]; dem=sdem[fp];  slen=sum(fp)
+                if len(sind)==0: continue
                     
                 #find the neighbor with min. depth
-                nind=sind0.copy(); ndem=ones(len(sind0))*nodata; ndir=zeros(len(sind0)); pdir=zeros(len(sind0)) 
+                ndem=ones(slen)*nodata; nind=zeros(slen).astype('int');  ndir=nind.copy() # pdir=nind.copy()
                 for m in arange(len(offsets)):
-                    sindi=sind0+offsets[m]; 
-                    fp=sindi>=nsize; sindi[fp]=nsize-1
-                    demi=dem[sindi]
+                    sindi=sind+offsets[m]; 
+                    fpo=sindi>=nsize; sindi[fpo]=nsize-1
+                    demi=dem0[sindi]
                     
                     #check values
-                    fp1=(demi!=nodata)*(ndem==nodata)
-                    fp2=(demi!=nodata)*(ndem!=nodata)*(demi<ndem)            
-                    fp=fp1|fp2
-                    
+                    fpm1=(demi!=nodata)*(ndem==nodata)
+                    fpm2=(demi!=nodata)*(ndem!=nodata)*(demi<ndem)
+                    fpm=fpm1|fpm2                    
+                        
                     #assign new ndem if ndem==nodata and demi!=nodata, and if demi<ndem            
-                    nind[fp]=sindi[fp]
-                    ndem[fp]=demi[fp]
-                    ndir[fp]=ndirs[m]
-                    pdir[fp]=pdirs[m]
-                                
-                if it==3:
-                    fp=(ndem!=nodata); self.dir[sind0[fp]]=ndir[fp]
-                else:
-                    zlim=0
-                    #compare with dem0
-                    fp1=(ndem!=nodata)*(dem0>ndem)*(dem0>(ndem+zlim)); 
-                    fp2=(ndem!=nodata)*(abs(dem0-ndem)<=zlim)*(nind>sind0)
-                    fp=fp1|fp2; self.dir[sind0[fp]]=ndir[fp]
-                    
-                    fp2=(ndem!=nodata)*(abs(dem0-ndem)<=zlim)*(nind<sind0)
-                    # fp=fp2; self.dir[sind0[fp]]=pdir[fp]
-                    fp=fp2; self.dir[sind0[fp]]=0
+                    nind[fpm]=sindi[fpm]
+                    ndem[fpm]=demi[fpm]
+                    ndir[fpm]=ndirs[m]
+                    #pdir[fpm]=pdirs[m]
+                                     
+                #when dem>ndem
+                fpm=(ndem!=nodata)*(dem>(ndem+zlimit))                
+                dir[sind[fpm]]=ndir[fpm]
+                
+                #when dem=ndem, assign dir first
+                if method==1:
+                    fpm=(ndem!=nodata)*(abs(dem-ndem)<=zlimit)*(sind<nind)
+                    dir[sind[fpm]]=ndir[fpm]
         
+        #convert nodata to nan
+        if isnan(self.nodata): dem0[fpn]=self.nodata
+        if type(data)==str: self.dem=self.dem.reshape(ds) #assume data is dem
+                                                        
         #reshape
-        self.dir=self.dir.reshape(ds)
+        dir=dir.reshape(ds)
+        exec('self.{}=dir'.format(outname))        
+        
+    def fill_depression(self):
+        
+        #change nan nodata to -99999
+        S.remove_nan_nodata();
+        
+        #resolve cells with dir==0, but with no upstream cells
+        self.compute_dir(method=1);
+        sind0=nonzero(self.dir.ravel()==0)[0]
+        isum=self.search_upstream(sind0,ireturn=2)
+        self.search_flat(sind0[isum==0],ireturn=6)
+         
+    
+    def resolve_flat(self,zlimit=0):
+        #resolve flat based on following paper
+        #An Efficient Assignment of Drainage Direction Over Flat Surfaces In 
+        #Raster Digital Elevation Models". Computers & Geosciences. doi:10.1016/j.cageo.2013.01.009"
+        
+        #pre-define variables
+        ds=self.ds; ym,xm=ds; nsize=ym*xm
+        
+        #find indices with (dir==0)
+        sind0=nonzero(self.dir.ravel()==0)[0]       
+        
+        #return how many neighboring indices with same elevation
+        isum=self.search_flat(sind0,ireturn=1,zlimit=zlimit) #indices of flat
+        fp=isum>0; sind0=sind0[fp]
+        
+        #obtain flat cell indices
+        sind_flat=self.search_flat(sind0,ireturn=3,zlimit=zlimit); #sind_flat=unique(sind_flat)
+        dir_flat=self.dir.ravel()[sind_flat];
+        
+        #find the low edges
+        fp=dir_flat!=0; sind_low=sind_flat[fp]
+        
+        #find the high edges
+        fp=dir_flat==0; sind_high=self.search_flat(sind_flat[fp],ireturn=2,zlimit=zlimit); 
+                
+        #initialize new dem, and assing dem begining from high edges        
+        dem_high=self.search_flat(sind_high,ireturn=4,zlimit=zlimit)[sind_flat]        
+                         
+        #initialize new dem, and assing dem begining from low edges        
+        dem_low=self.search_flat(sind_low,ireturn=5,zlimit=zlimit)[sind_flat]
+                        
+        #combine dem_high and dem_low 
+        dem_new=ones(nsize)*self.nodata; 
+        dem_new[sind_flat]=2*dem_low+dem_high
+                
+        #replace original dem
+        self.compute_dir(data=dem_new.reshape(ds),outname='dir_tmp',zlimit=zlimit)             
+        sind_new=setdiff1d(sind_flat,sind_low)        
+        self.dir.ravel()[sind_new]=self.dir_tmp.ravel()[sind_new]                
+        delattr(self,'dir_tmp')
+        
+    def search_flat(self,sind0,ireturn=0,zlimit=0,wlevel=0,level=0,level_max=500):
+        #ireturn=0: return one-level nearby indices with same elevation
+        #ireturn=1: return how many neighboring indices with same elevation        
+        #ireturn=2: return high edges of flat
+        #ireturn=3: return all the nearby indice with same elevation (all the cells in flat)   
+        #ireturn=4: calculate elevation from high edges
+        #ireturn=5: calculate elevation from low edges
+        #ireturn=6: assign dir to the dir=0 neighbor that is without upstream cells
+        
+        #pre-define variables
+        slen=len(sind0); ds=self.ds; ym,xm=ds; nsize=ym*xm
+        dem0=self.dem.ravel()[sind0]
+        
+        #convert index
+        iy0,ix0=unravel_index(sind0,ds)
+        
+        #construct maxtrix for neighbor
+        yind=r_[iy0-1,iy0-1,iy0-1,iy0,iy0+1,iy0+1,iy0+1,iy0]
+        xind=r_[ix0+1,ix0,ix0-1,ix0-1,ix0-1,ix0,ix0+1,ix0+1]
+        
+        #true neighbors
+        fpt=nonzero((xind>=0)*(xind<xm)*(yind>=0)*(yind<ym))[0]
+        sind_true=ravel_multi_index([yind[fpt],xind[fpt]],ds); dem_true=self.dem.ravel()[sind_true]
+        
+        if ireturn==6:
+            #get neighboring minimum dem and indices
+            fp=dem_true==self.nodata;  dem_true[fp]=1e10
+            dem=ones([8,slen])*1e10; dem.ravel()[fpt]=dem_true            
+            iy_min=argmin(dem,axis=0)
+            dem_min=dem[iy_min,arange(slen)]            
+            
+            #modify sind0's dir and dem
+            dir0=array([128,64,32,16,8,4,2,1])
+            self.dir.ravel()[sind0]=dir0[iy_min]
+            self.dem.ravel()[sind0]=dem_min
+            
+        
+        if ireturn==2:
+            fph=nonzero(dem_true>(tile(dem0,8)[fpt]+zlimit))[0]
+            num=zeros(slen*8); num[fpt[fph]]=1;             
+            isum=num.reshape([8,slen]).sum(axis=0); 
+            fp=isum>0; sind_next=sind0[fp]
+            return sind_next
+        
+        #neighbor with same elevation
+        fps=nonzero(abs(dem_true-tile(dem0,8)[fpt])<=zlimit)[0]
+        sind_next=sind_true[fps]; 
+                
+        #exclude low edges
+        if ireturn==4:            
+            fpl=nonzero(self.dir.ravel()[sind_next]==0)[0]; fpl_len=len(sind_next)
+            sind_next=sind_next[fpl]
+                    
+        #unique indices
+        sind_next,fpu,fpu_inverse=unique(sind_next,return_index=True,return_inverse=True)
+        
+        if ireturn==0:
+            return sind_next
+        
+        if ireturn==1:
+            num=zeros(slen*8); num[fpt[fps]]=1
+            isum=reshape(num,[8,slen]).sum(axis=0).astype('int')
+            return isum
+        
+        if ireturn in [3,4,5]:
+            if wlevel==0: #first level loop
+                #init
+                self.sind_next=sind0.copy()
+                self.sind_list=[] 
+                self.flag_search=True
+                self.dem_flag=zeros(nsize).astype('int32')
+                                
+                if ireturn in [4,5]:
+                    self.v0=1
+                    self.vmax=None                    
+                    self.dem_flat=zeros(nsize).astype('int32')                    
+                if ireturn==4: self.sind_list.append(sind0)
+                                 
+                #1st round of search loop from outside to inside
+                while self.flag_search:
+                    sind_next=self.sind_next
+                    if len(sind_next)!=0:
+                        self.search_flat(sind_next,ireturn=ireturn,wlevel=1,level=0,level_max=level_max)
+                        
+                #2nd round of search loop from inside to outside
+                if ireturn==4: 
+                    self.dem_flag[:]=0
+                    for i in arange(len(self.sind_list)):
+                        self.vmax=self.search_flat(self.sind_list[-i-1],ireturn=ireturn,wlevel=2,level=0,level_max=level_max)
+                
+                #save results
+                if ireturn==3: 
+                    sind=array(self.sind_list)
+                else:
+                    dem_flat=self.dem_flat
+                    
+                #clean
+                delattr(self,'sind_next'); delattr(self,'sind_list');delattr(self,'dem_flag'); delattr(self,'flag_search')
+                if ireturn in [4,5]: delattr(self,'v0'); delattr(self,'vmax');delattr(self,'dem_flat')
+                
+                #return results
+                if ireturn==3: 
+                    return sind
+                else:
+                    return dem_flat
+
+            elif wlevel==1: #2nd level search, for ireturn==3
+                self.dem_flag[sind0]=1
+                fpn=self.dem_flag[sind_next]==0; sind_next=sind_next[fpn]
+                if ireturn==3: self.sind_list.extend(sind0);  
+                x=ravel_multi_index([1437,2574],ds) in sind0
+                
+                if ireturn in [4,5]: self.dem_flat[sind0]=(ones(slen)*(level+self.v0)).astype('int32')
+                
+                if level!=level_max:                    
+                    if sum(fpn)!=0: #continue                      
+                        self.search_flat(sind_next,ireturn=ireturn,wlevel=1,level=level+1,level_max=level_max)
+                    else:
+                        self.flag_search=False #reach the end                        
+                else:                
+                    if sum(fpn)!=0:
+                        self.sind_next=sind_next                         
+                        if ireturn in [4,5]:
+                            self.sind_list.append(sind_next)
+                            self.v0=int(self.v0+level_max)                        
+                                              
+            elif wlevel==2: #2nd level search, for ireturn==4 
+                self.dem_flag[sind0]=1
+                fpn=nonzero(self.dem_flag[sind_next]==0)[0]; fpn_len=len(sind_next)
+                sind_next=sind_next[fpn]                    
+                vmax=self.dem_flat[sind0].copy()
+                
+                if level!=level_max:                                       
+                    if sum(fpn)!=0: #continue                      
+                        vmax_next=self.search_flat(sind_next,ireturn=ireturn,wlevel=2,level=level+1,level_max=level_max)                                                                                          
+                    else:
+                        self.flag_search=False #reach the end
+                else:                
+                    if sum(fpn)!=0:
+                        vmax_next=self.vmax
+                    
+                #modify dem_flat
+                if sum(fpn)!=0:
+                    #replace vmax with vmax_next if vmax_next is larger                    
+                    num_n=zeros(fpn_len); num_n[fpn]=vmax_next                                        
+                    num=zeros(8*slen);  num[fpt[fps[fpl]]]=num_n[fpu_inverse] 
+                    
+                    nmax=reshape(num,[8,slen]).max(axis=0)                                       
+                    fp=vmax<nmax; vmax[fp]=nmax[fp]
+                    
+                self.dem_flat[sind0]=vmax-self.dem_flat[sind0]                    
+                
+                return vmax
         
     def search_boundary(self,sind0,wlevel=0,level=0,level_max=500):
         #search pts of boundary pts of watershed segment, sind0 are the initial index of segments
@@ -709,8 +889,10 @@ class dem_dir(object):
                 if seg is None: delattr(self,'seg')
                     
                 #reshape
-                self.acc=self.acc.reshape(ds)                
+                if hasattr(self,'acc'): self.acc=self.acc.reshape(ds)                
                 if seg is not None: self.seg=self.seg.reshape(ds)
+                
+                return
                          
             elif wlevel==1: #2-level recursive search    
                 #assign seg number
@@ -869,7 +1051,7 @@ class dem_dir(object):
                 sind_list=array([array(i) for i in self.sind_list])                
                 
                 #clean
-                #delattr(self,'sind_next'); delattr(self,'flag_search'); delattr(self,'sind_list')
+                delattr(self,'sind_next'); delattr(self,'flag_search'); delattr(self,'sind_list')
                 
                 if ireturn==1:
                     return sind_next
@@ -895,12 +1077,17 @@ class dem_dir(object):
                             [self.sind_list[i].append(j) for i,j in zip(ind_list,sind_list)]
                         
                         #continue search the rest pts 
-                        self.search_downstream(sind_next[fpz],ireturn=ireturn,wlevel=1,level=level+1,level_max=level_max)                      
+                        self.search_downstream(sind_next[fpz],ireturn=ireturn,wlevel=1,level=level+1,level_max=level_max)                              
             
     def compute_extent(self):
         #recalculate extent from affine        
         ym,xm=self.ds; dxy=self.affine[0]; ly0=self.affine[5]; lx0=self.affine[2]        
         self.extent=array([lx0,lx0+(xm-1)*dxy,ly0-(ym-1)*dxy,ly0])
+        
+    def remove_nan_nodata(self,nodata=-99999):
+        fpn=isnan(self.dem)
+        self.dem[fpn]=nodata
+        self.nodata=nodata
     
     def get_coordinates(self,sind0,affine=None,ds=None,nodata=None):     
         #example: sind0=nonzero(self.dir.ravel()==0)[0], or sind0=nonzero(self.dir==0)
@@ -966,21 +1153,112 @@ class dem_dir(object):
 if __name__=="__main__":    
     close('all')
     sys.setrecursionlimit(100000)
+
+    import copy
+
     
+    S0=dem_dir();S0.read_data('S1.npz') 
+    S=dem_dir(); S.read_data('S1_flats_fdem.npz'); 
+    S.ds=S.dem.shape; ds=S.ds; ym,xm=ds
+
+    #make sure every cell(dir=0) has upstream
+    S.fill_depression();
+    
+    #assign each depression
+    sind0=nonzero(S.dir.ravel()==0)[0]
+    iy0,ix0=unravel_index(sind0,ds)
+    fp=(iy0>0)*(iy0<(ym-1))*(ix0>0)*(ix0<(xm-1))    
+    
+    iy=iy0[fp]; ix=ix0[fp]; sind=sind0[fp]; seg=arange(len(sind))+1    
+    
+    S.search_upstream(sind,ireturn=3,seg=seg,level_max=100) 
+        
+    
+    sys.exit()
+    # # #compute dir
+
+    
+    # iy,ix=unravel_index(sind,ds)
+    # fp=(iy>0)*(iy<(ym-1))*(ix>0)*(ix<(xm-1))
+    
+    # siy=iy[fp]; six=ix[fp]; ssind=sind[fp]
+    # biy=iy[~fp]; bix=ix[~fp]; bsind=sind[~fp]
+    
+    # S.search_flat(bsind,ireturn=6)
+    
+    dt1=time.time()-t0
+    
+    # S.resolve_flat()
+    # S.compute_watershed()
+    dt2=time.time()-t0
+
+    # S.compute_dir()
+    # S.resolve_flat()
+    
+    A=S.dem;
+    B=S.dir;
+    
+    # sind0=nonzero(S.dir.ravel()==0)[0]
+    # isum=S.search_upstream(sind0,ireturn=2)
+    
+    # sys.exit()
+    
+    # # #fill depression
+    # # sind0=nonzero(S.dir.ravel()==0)[0]; 
+    # # isum=S.search_upstream(sind0,ireturn=2); sind=sind0[isum==8]
+    # # S.fill_depression(sind0,nodata=S.nodata)
+    
+    
+    # # #resolve flats
+    # # S.compute_dir('dem');
+    # # S.resolve_flat(zlimit=1e-5);
+    
+    # # sys.exit()
+    
+    # # #compute watershed
+    # # S.compute_dir('dem');
+    # # S.compute_watershed()
+    
+    # # S1.compute_dir('dem');
+    # # S1.resolve_flat();
+    # # S1.compute_watershed()
+    
+    figure();
+    subplot(2,1,1)
+    imshow(S0.acc,vmin=0,vmax=1e3)
+    
+    subplot(2,1,2)
+    imshow(S.acc,vmin=0,vmax=1e3)
+    
+    sys.exit()
+#-----------------test resolve flats-------------------------------------------  
+    # S=dem_dir(); #S.read_data('S2_DEM.npz')
+    
+    # ds=[20,20]
+    # S.dem=arange(prod(ds)).reshape(ds); S.ds=ds; S.nodata=-9999;
+    # iy,ix=nonzero(S.dem>-99)
+    
+    # fp=sqrt((iy-6)**2+(ix-6)**2)<5; S.dem.ravel()[fp]=-2; S.dem[14,13]=-8;
+    
+    # S.dem[13:18,13:18]=-2; S.dem[18,14]=-8;  A=S.dem
+    
+    # S.compute_dir(data='dem');
+    # S.resolve_flat(); B=S.dir    
+
 #------write shapefile---------------------------------------------------------
-    S=dem_dir(); S.read_data('S4.npz'); 
-    acc_limit=1e3; seg=arange(1,1e5)
-    S.compute_river(seg,acc_limit=acc_limit,apply_mask=True)
-    S.write_shapefile('rivers','D_0_rivers')
-    # S.compute_boundary(seg,acc_limit=acc_limit)            
-    # S.write_shapefile('boundary','B_boundary')    
+    # S=dem_dir(); S.read_data('S2.npz'); 
+    # acc_limit=1e2; seg=arange(1,1e5)
+    # S.compute_river(seg,acc_limit=acc_limit,apply_mask=True)
+    # S.write_shapefile('rivers','B_rivers')
+    # # S.compute_boundary(seg,acc_limit=acc_limit)            
+    # # S.write_shapefile('boundary','B_boundary')    
 
 #--------------------------precalculation--------------------------------------
-    # # # # # # #--------------------------------------------------------------
-    # # compute dir and acc, then save them
-    # fname='./13arcs/southern_louisiana_13_navd88_2010.asc'; sname='S3'
-    # # fname='ne_atl_crm_v1.asc'; sname='S2'
-    # # fname='GEBCO.asc'; sname='S1'
+    # # # # # # # # #--------------------------------------------------------------
+    # # # compute dir and acc, then save them
+    # # # fname='./13arcs/southern_louisiana_13_navd88_2010.asc'; sname='S3'
+    # # # fname='ne_atl_crm_v1.asc'; sname='S2'
+    # fname='GEBCO.asc'; sname='S1'
         
     # #read dem info
     # gds=read_deminfo(fname,'dem',size_subdomain=1e7); 
@@ -1002,7 +1280,7 @@ if __name__=="__main__":
     #         gds.read_dem_data('dem',[id],dem_data=gds.dem0_data[0].data);
     #         # gds.read_dem_data('dem',[id]);
     #         gd=gds.dem_data[0]
-                
+
     #         #processing raw data
     #         if flat_option==0:
     #             try:                
