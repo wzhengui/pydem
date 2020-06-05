@@ -4,170 +4,173 @@ from pylib import *
 from pysheds.grid import Grid
 from affine import Affine
 
-def read_deminfo(path,name='dem',size_subdomain=5e5, **kwargs):
-    if path.endswith('tif'):
-        gd=SGrid.from_raster(path, data_name, **kwargs);
-    elif path.endswith('asc'):
-        gd=dem_data(); gd.add_deminfo(path,name,size_subdomain=size_subdomain);
+# def read_deminfo(path,name='dem',size_subdomain=5e5, **kwargs):
+#     if path.endswith('tif'):
+#         gd=SGrid.from_raster(path, data_name, **kwargs);
+#     elif path.endswith('asc'):
+#         gd=dem_data(); gd.add_deminfo(path,name,size_subdomain=size_subdomain);
         
-        # gd=SGrid.from_ascii(path, data_name, header_only=True,**kwargs)
-        #gd=SGrid.from_ascii(path, data_name, header_only=header_only,window=window,**kwargs);           
-    return gd 
+#         # gd=SGrid.from_ascii(path, data_name, header_only=True,**kwargs)
+#         #gd=SGrid.from_ascii(path, data_name, header_only=header_only,window=window,**kwargs);           
+#     return gd 
 
-class dem_data(object):
-    def __init__(self):
-        self.name=[]
-        pass
+# class dem_data(object):
+#     def __init__(self):
+#         self.name=[]
+#         pass
     
-    def read_dem_data(self, name=None,index_domain=None,dem_data=None):
-        #read dem data for each subdomain        
-        if name==None:
-           sname=self.name
-        elif type(name)==str:
-           sname=[name,]
-        elif type(name)==list:
-           sname=sname
-        else:
-           sys.exit('unknow name type')
+#     def read_dem_data(self, name=None,index_domain=None,dem_data=None):
+#         #read dem data for each subdomain        
+#         if name==None:
+#            sname=self.name
+#         elif type(name)==str:
+#            sname=[name,]
+#         elif type(name)==list:
+#            sname=sname
+#         else:
+#            sys.exit('unknow name type')
                    
                 
-        for snamei in sname:
-            S=npz_data();exec('S.dinfo=self.{}_info'.format(snamei)); dinfo=S.dinfo;
+#         for snamei in sname:
+#             S=npz_data();exec('S.dinfo=self.{}_info'.format(snamei)); dinfo=S.dinfo;
             
-            #read sample              
-            if dem_data is not None:
-                data0=SGrid.from_ascii(dinfo.path,'data',skiprows=6,usecols=arange(5),max_rows=5)
+#             #read sample              
+#             if dem_data is not None:
+#                 data0=SGrid.from_ascii(dinfo.path,'data',skiprows=6,usecols=arange(5),max_rows=5)
             
-            #get indices of subdomain
-            if index_domain==None:
-                sind=arange(dinfo.nsubdomain)
-            elif type(index_domain)==list:
-                sind=index_domain
-            else:
-                sind=[index_domain]
+#             #get indices of subdomain
+#             if index_domain==None:
+#                 sind=arange(dinfo.nsubdomain)
+#             elif type(index_domain)==list:
+#                 sind=index_domain
+#             else:
+#                 sind=[index_domain]
              
-            #read data for each subdomain
-            data=[]
-            for sindi in sind:
-                dm=dinfo.domains[sindi]
+#             #read data for each subdomain
+#             data=[]
+#             for sindi in sind:
+#                 dm=dinfo.domains[sindi]
                 
-                if dem_data is None:
-                    datai=SGrid.from_ascii(dm.path,'data',skiprows=dm.skiprows,usecols=dm.usecols,max_rows=dm.max_rows, affine_new=dm.affine);
-                else:           
-                    datai=data0;
-                    dem=dem_data[dm.ixy[0]:dm.ixy[1],dm.ixy[2]:dm.ixy[3]]                 
-                    datai.add_gridded_data(data=dem, data_name='data', affine=dm.affine, shape=dm.shape,
-                               crs=data0.crs, nodata=data0.nodata, metadata={}) 
-                    datai.shape=dm.shape; datai.mask=ones(dm.shape)==1
+#                 if dem_data is None:
+#                     datai=SGrid.from_ascii(dm.path,'data',skiprows=dm.skiprows,usecols=dm.usecols,max_rows=dm.max_rows, affine_new=dm.affine);
+#                 else:           
+#                     datai=data0;
+#                     dem=dem_data[dm.ixy[0]:dm.ixy[1],dm.ixy[2]:dm.ixy[3]]                 
+#                     datai.add_gridded_data(data=dem, data_name='data', affine=dm.affine, shape=dm.shape,
+#                                crs=data0.crs, nodata=data0.nodata, metadata={}) 
+#                     datai.shape=dm.shape; datai.mask=ones(dm.shape)==1
                   
-                data.append(datai)
-            exec('self.{}_data=data'.format(snamei))
+#                 data.append(datai)
+#             exec('self.{}_data=data'.format(snamei))
                             
-    def add_deminfo(self,path,name,size_subdomain=5e6):
-        # 1G~=6e7 pts; 100M~=5e6 pts
+#     def add_deminfo(self,path,name,size_subdomain=5e6):
+#         # 1G~=6e7 pts; 100M~=5e6 pts
                 
-        #read *asc info
-        gd=SGrid.from_ascii(path,'name',header_only=True)
+#         #read *asc info
+#         gd=SGrid.from_ascii(path,'name',header_only=True)
         
-        #dem information
-        nrows=gd.shape[0]; ncols=gd.shape[1]; 
-        xll=gd.affine[2]; yll=gd.affine[5]; cellsize=gd.affine[0]
+#         #dem information
+#         nrows=gd.shape[0]; ncols=gd.shape[1]; 
+#         xll=gd.affine[2]; yll=gd.affine[5]; cellsize=gd.affine[0]
         
-        #save dem information 
-        deminfo=npz_data(); deminfo.type='ascii'; deminfo.path=path
-        deminfo.ncols=ncols; deminfo.nrows=nrows; deminfo.xll=xll; deminfo.yll=yll; deminfo.cellsize=cellsize; 
-        deminfo.affine=gd.affine; deminfo.bbox=gd.bbox; deminfo.extent=gd.extent
+#         #save dem information 
+#         deminfo=npz_data(); deminfo.type='ascii'; deminfo.path=path
+#         deminfo.ncols=ncols; deminfo.nrows=nrows; deminfo.xll=xll; deminfo.yll=yll; deminfo.cellsize=cellsize; 
+#         deminfo.affine=gd.affine; deminfo.bbox=gd.bbox; deminfo.extent=gd.extent
         
-        #divide the domain into subdomains
-        ndem0=max(around(gd.size/size_subdomain),1); nx=int(round(sqrt(ndem0))); ny=int(ndem0/nx); ndem=nx*ny
-        deminfo.nsubdomain=ndem; deminfo.nx=nx; deminfo.ny=ny; deminfo.size=gd.size; deminfo.domains=[]; 
+#         #divide the domain into subdomains
+#         ndem0=max(around(gd.size/size_subdomain),1); nx=int(round(sqrt(ndem0))); ny=int(ndem0/nx); ndem=nx*ny
+#         deminfo.nsubdomain=ndem; deminfo.nx=nx; deminfo.ny=ny; deminfo.size=gd.size; deminfo.domains=[]; 
     
-        dy0=int(floor(nrows/ny)); dx0=int(floor(ncols/nx))
-        offset=int(min(dy0/2,dx0/2,500))
-        for i in arange(ny):
-            #subdomain index
-            if ny==1:
-                dy=dy0; iy=0; ylli=yll; indy=[0,dy];                                
-            else:
-                if i==0:
-                    dy=dy0+offset; iy=0; ylli=yll; indy=[0,dy-offset]
-                elif i==(ny-1):
-                    dy=nrows-(ny-1)*dy0+offset; iy=i*dy0-offset; ylli=yll-iy*cellsize; indy=[offset,dy]
-                else:
-                    dy=dy0+2*offset; iy=i*dy0-offset; ylli=yll-iy*cellsize; indy=[offset,-offset]                    
+#         dy0=int(floor(nrows/ny)); dx0=int(floor(ncols/nx))
+#         offset=int(min(dy0/2,dx0/2,500))
+#         for i in arange(ny):
+#             #subdomain index
+#             if ny==1:
+#                 dy=dy0; iy=0; ylli=yll; indy=[0,dy];                                
+#             else:
+#                 if i==0:
+#                     dy=dy0+offset; iy=0; ylli=yll; indy=[0,dy-offset]
+#                 elif i==(ny-1):
+#                     dy=nrows-(ny-1)*dy0+offset; iy=i*dy0-offset; ylli=yll-iy*cellsize; indy=[offset,dy]
+#                 else:
+#                     dy=dy0+2*offset; iy=i*dy0-offset; ylli=yll-iy*cellsize; indy=[offset,-offset]                    
             
-            for j in arange(nx):
-                #subdomain index
-                if nx==1:
-                    dx=dx0; ix=0; xlli=xll; indx=[0,dx]                               
-                else:
-                    if j==0:
-                        dx=dx0+offset; ix=0; xlli=xll; indx=[0,dx-offset]
-                    elif j==(nx-1):
-                        dx=ncols-(nx-1)*dx0+offset; ix=j*dx0-offset; xlli=xll+ix*cellsize; indx=[offset,dx]
-                    else:
-                        dx=dx0+2*offset; ix=j*dx0-offset; xlli=xll+ix*cellsize; indx=[offset,-offset]    
+#             for j in arange(nx):
+#                 #subdomain index
+#                 if nx==1:
+#                     dx=dx0; ix=0; xlli=xll; indx=[0,dx]                               
+#                 else:
+#                     if j==0:
+#                         dx=dx0+offset; ix=0; xlli=xll; indx=[0,dx-offset]
+#                     elif j==(nx-1):
+#                         dx=ncols-(nx-1)*dx0+offset; ix=j*dx0-offset; xlli=xll+ix*cellsize; indx=[offset,dx]
+#                     else:
+#                         dx=dx0+2*offset; ix=j*dx0-offset; xlli=xll+ix*cellsize; indx=[offset,-offset]    
                 
-                #save subdomain info
-                datai=npz_data()
+#                 #save subdomain info
+#                 datai=npz_data()
                 
-                datai.path=path
-                datai.affine=Affine(cellsize,0,xlli,0,-cellsize,ylli)        
-                datai.bbox=(xlli,ylli-(dy-1)*cellsize,xlli+(dx-1)*cellsize,ylli)
-                datai.extent=(xlli,xlli+(dx-1)*cellsize,ylli-(dy-1)*cellsize,ylli)
-                datai.size=dx*dy
-                datai.shape=(dy,dx)
-                datai.skiprows=6+iy
-                datai.usecols=range(ix,ix+dx)
-                datai.max_rows=dy
-                datai.rind=[*indy,*indx]    #extract data from subdomain
-                datai.ixy=[iy,iy+dy,ix,ix+dx] #extract data for subdomain
+#                 datai.path=path
+#                 datai.affine=Affine(cellsize,0,xlli,0,-cellsize,ylli)        
+#                 datai.bbox=(xlli,ylli-(dy-1)*cellsize,xlli+(dx-1)*cellsize,ylli)
+#                 datai.extent=(xlli,xlli+(dx-1)*cellsize,ylli-(dy-1)*cellsize,ylli)
+#                 datai.size=dx*dy
+#                 datai.shape=(dy,dx)
+#                 datai.skiprows=6+iy
+#                 datai.usecols=range(ix,ix+dx)
+#                 datai.max_rows=dy
+#                 datai.rind=[*indy,*indx]    #extract data from subdomain
+#                 datai.ixy=[iy,iy+dy,ix,ix+dx] #extract data for subdomain
                 
-                deminfo.domains.append(datai)
+#                 deminfo.domains.append(datai)
           
-        exec('self.{}_info=deminfo'.format(name))
-        self.name.append(name)
+#         exec('self.{}_info=deminfo'.format(name))
+#         self.name.append(name)
     
-class SGrid(Grid): 
+# class SGrid(Grid): 
         
-    @classmethod
-    def from_ascii(cls, path, data_name,header_only=False,affine_new=None,**kwargs):          
-          newinstance = cls()
-          newinstance.read_ascii(path, data_name,header_only=header_only,affine_new=affine_new,**kwargs)          
-          return newinstance
+#     @classmethod
+#     def from_ascii(cls, path, data_name,header_only=False,affine_new=None,**kwargs):          
+#           newinstance = cls()
+#           newinstance.read_ascii(path, data_name,header_only=header_only,affine_new=affine_new,**kwargs)          
+#           return newinstance
                   
-    #define new object for adding new method to original Grid Obect
-    def read_ascii(self, data, data_name, skiprows=6, crs=Proj('epsg:4326'),
-                    xll='lower', yll='lower', metadata={},header_only=False, affine_new=None, **kwargs):
-        #copy from pyshed's function
-         import ast                               
-         with open(data) as header:
-             ncols = int(header.readline().split()[1])
-             nrows = int(header.readline().split()[1])
-             xll = ast.literal_eval(header.readline().split()[1])
-             yll = ast.literal_eval(header.readline().split()[1])
-             cellsize = ast.literal_eval(header.readline().split()[1])
-             nval=header.readline().split()[1];
-             if nval.lower() in ('nan','-nan'):
-                 nodata=nan
-             else:
-                 nodata = ast.literal_eval(nval)
-             shape = (nrows, ncols)
-         if header_only:
-             data=array([]);
-         else:
-             data = np.loadtxt(data, skiprows=skiprows, **kwargs)
-             nodata = data.dtype.type(nodata)         
-         if affine_new==None:
-             affine = Affine(cellsize, 0, xll, 0, -cellsize, yll + (nrows-1)*cellsize)
-         else:
-             affine=affine_new; shape=data.shape
-         self.add_gridded_data(data=data, data_name=data_name, affine=affine, shape=shape,
-                               crs=crs, nodata=nodata, metadata=metadata)
+#     #define new object for adding new method to original Grid Obect
+#     def read_ascii(self, data, data_name, skiprows=6, crs=Proj('epsg:4326'),
+#                     xll='lower', yll='lower', metadata={},header_only=False, affine_new=None, **kwargs):
+#         #copy from pyshed's function
+#          import ast                               
+#          with open(data) as header:
+#              ncols = int(header.readline().split()[1])
+#              nrows = int(header.readline().split()[1])
+#              xll = ast.literal_eval(header.readline().split()[1])
+#              yll = ast.literal_eval(header.readline().split()[1])
+#              cellsize = ast.literal_eval(header.readline().split()[1])
+#              nval=header.readline().split()[1];
+#              if nval.lower() in ('nan','-nan'):
+#                  nodata=nan
+#              else:
+#                  nodata = ast.literal_eval(nval)
+#              shape = (nrows, ncols)
+#          if header_only:
+#              data=array([]);
+#          else:
+#              data = np.loadtxt(data, skiprows=skiprows, **kwargs)
+#              nodata = data.dtype.type(nodata)         
+#          if affine_new==None:
+#              affine = Affine(cellsize, 0, xll, 0, -cellsize, yll + (nrows-1)*cellsize)
+#          else:
+#              affine=affine_new; shape=data.shape
+#          self.add_gridded_data(data=data, data_name=data_name, affine=affine, shape=shape,
+#                                crs=crs, nodata=nodata, metadata=metadata)
+
+
+
          
-class dem_dir(object):
+class dem(object):
     def __init__(self):
-        pass
+        pass                                             
     
     def read_data(self,path):
         #read saved dir data
@@ -495,6 +498,7 @@ class dem_dir(object):
         self.search_upstream(sind0,ireturn=3,seg=seg0,level_max=level_max)
         
         #get indices for each depression; here seg is numbering, not segment number
+        print('---------save all depression points---------------------------')
         sind_segs=self.search_upstream(sind0,ireturn=9,seg=arange(slen),acc_calc=True,level_max=level_max)
         ns0=array([len(i) for i in sind_segs])                  
       
@@ -533,7 +537,7 @@ class dem_dir(object):
             if len(idz)!=0:
                 #save boundary first
                 boundary=self.boundary.copy(); delattr(self,'boundary')
-                self.compute_boundary(sind=sind0[idz],msg=False);
+                self.compute_boundary(sind=sind0[idz]);
                 boundary[idz]=self.boundary
                 self.boundary=boundary; boundary=None
                                         
@@ -880,7 +884,7 @@ class dem_dir(object):
                 
                 return vmax
         
-    def search_boundary(self,sind0,wlevel=0,level=0,level_max=100):
+    def search_boundary(self,sind0,wlevel=0,level=0,level_max=100,msg=True):
         #search pts of boundary pts of watershed segment, sind0 are the initial index of segments
         
         #pre-defind variables
@@ -945,7 +949,7 @@ class dem_dir(object):
             iflag=0
             while self.flag_search:                
                 iflag=iflag+1;
-                print('search boundary: loop={}, npt={}'.format(iflag,len(self.sind_next)))
+                if msg: print('search boundary: loop={}, npt={}'.format(iflag,len(self.sind_next)))
                 if len(self.sind_next)==0: break
                 self.search_boundary(self.sind_next,wlevel=1,level=0,level_max=level_max)
                 #print('search bnd: {}'.format(iflag*level_max))
@@ -1375,27 +1379,122 @@ class dem_dir(object):
         
         #write shapefile
         write_shapefile_data(sname,S)
-                       
+        
+class dem_data(dem):
+    def __init__(self):
+        pass       
+
+    def read_dem(self,name,outname='deminfo',subdomain_size=5e6,offset=0):
+        
+        #init
+        self.deminfo=npz_data()
+        
+        #read header
+        self.read_dem_header(name,subdomain_size=subdomain_size,offset=offset)
+        
+        
+               
+    def read_dem_header(self,name,subdomain_size=5e6,offset=0):
+        #read header info
+        #work for *asc at present
+        
+        #read header
+        if name.endswith('.asc'):
+            with open(name,'r') as fid:
+                xm=int(fid.readline().split()[1])
+                ym=int(fid.readline().split()[1])
+                xll=float(fid.readline().split()[1])
+                yll=float(fid.readline().split()[1])
+                dxy=float(fid.readline().split()[1])
+                nval=fid.readline().split()[1]
+                if nval.lower() in ('nan','-nan'):
+                    nodata=nan
+                else:
+                    nodata=float(nval)
+                
+        #process info
+        nsize=ym*xm; 
+        self.deminfo.header=[ym,xm,yll,xll,dxy,nodata]
+        self.deminfo.ds=[ym,xm]; 
+        self.deminfo.shape=[ym,xm]; 
+        self.deminfo.extent=(xll,xll+(xm-1)*dxy,yll,yll+(ym-1)*dxy)                   
+        self.deminfo.skiprows=6
+        self.max_rows=ym
+        
+        #divide the domain into subdomains       
+        nsub=max(around(nsize/subdomain_size),1);         
+        nx=max(int(round(sqrt(nsub))),1); ny=max(int(nsub/nx),1);
+        dy0=int(floor(ym/ny)); dx0=int(floor(xm/nx))        
+        
+        self.deminfo.nsubdomain=nx*ny; self.deminfo.subdomain_shape=[dy0,dx0]
+        self.domains=[]
+
+        #calcuate subdomain info        
+        for i in arange(ny):
+            dy00=dy0
+            #subdomain index
+            if ny==1:
+                iy=0; dy=dy0; ylli=yll; indy=[0,dy]; 
+            else:
+                if i==0:
+                    iy=0;  dy=dy0+offset;  ylli=yll; indy=[0,dy-offset];
+                elif i==(ny-1):
+                    iy=i*dy0-offset;  dy=ym-iy;  ylli=yll+iy*dxy;  indy=[offset,dy]; dy00=dy-offset
+                else:
+                    iy=i*dy0-offset;  dy=dy0+2*offset;  ylli=yll+iy*dxy; indy=[offset,dy-offset];
+            
+            dx00=dx0
+            for k in arange(nx):                                
+                #subdomain index
+                if nx==1:
+                    ix=0;  dx=dx0;  xlli=xll; indx=[0,dx]                               
+                else:
+                    if k==0:
+                        ix=0;  dx=dx0+offset;  xlli=xll; indx=[0,dx-offset]
+                    elif k==(nx-1):
+                        ix=k*dx0-offset; dx=xm-ix;  xlli=xll+ix*dxy; indx=[offset,dx]; dx00=dx-offset
+                    else:
+                        ix=k*dx0-offset; dx=dx0+2*offset;  xlli=xll+ix*dxy; indx=[offset,dx-offset]    
+                
+                #save subdomain info
+                sinfo=npz_data();                         
+                sinfo.header=(dy,dx,ylli,xlli,dxy,nodata)
+                sinfo.ds=(dy,dx)
+                sinfo.shape=(dy00,dx00)
+                sinfo.extent=(xlli,xlli+(dx-1)*dxy,ylli,ylli+(dy-1)*dxy)                                
+                sinfo.skiprows=6+iy
+                sinfo.usecols=range(ix,ix+dx)
+                sinfo.max_rows=dy
+                sinfo.ind_extract=[*indy,*indx]    #extract data from subdomain
+                sinfo.ind_read=[iy,iy+dy,ix,ix+dx] #extract data for subdomain
+                sinfo.nsubdomain=0
+        
+                sdata=dem(); sdata.deminfo=sinfo
+                self.domains.append(sdata)    
+        self.domains=array(self.domains)
          
 if __name__=="__main__":    
     close('all')
-    
 
-    
+#------read dem---------------------------------------------------------------
+    S=dem_data(); 
+    #S.read_dem('tmp.asc')
+    S.read_dem('GEBCO.asc',outname='S1',subdomain_size=1e5,offset=100)
+        
 #------write shapefile---------------------------------------------------------
-    acc_limit=1e2; seg=arange(1,1e5)
-    S0=dem_dir(); S0.read_data('S2.npz')
+    # acc_limit=1e4; seg=arange(1,1e5)
+    # S0=dem_dir(); S0.read_data('S1.npz')
     
-    S=dem_dir(); 
-    S.read_data('S2_DEM.npz'); S.affine=S0.affine
-    S.compute_dir()
-    S.fill_depression(level_max=100)
-    S.compute_watershed()
+    # S=dem_dir(); 
+    # S.read_data('S2_DEM.npz'); S.affine=S0.affine
+    # S.compute_dir()
+    # S.fill_depression(level_max=100)
+    # S.compute_watershed()
       
-    S.compute_river(seg,acc_limit=acc_limit)
-    S.write_shapefile('rivers','A_rivers')
-    # S.compute_boundary(seg,acc_limit=acc_limit)            
-    # S.write_shapefile('boundary','B_boundary')    
+    # S.compute_river(seg,acc_limit=acc_limit)
+    # S.write_shapefile('rivers','A0_rivers')
+    # # S.compute_boundary(seg,acc_limit=acc_limit)            
+    # # S.write_shapefile('boundary','B_boundary')    
 
 #--------------------------precalculation--------------------------------------
     # # # # # # # # #--------------------------------------------------------------
