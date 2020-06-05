@@ -271,9 +271,7 @@ class dem_dir(object):
                         
         #pre-define variables
         ds=self.ds; ym,xm=ds
-        
-        print('computing watershed boundary')
-         
+               
         #compute river mouths        
         if sind is not None:
             sind0=sind.copy(); seg0=self.seg.ravel()[sind0]
@@ -334,9 +332,11 @@ class dem_dir(object):
         #all the catchments        
         sind0=nonzero(self.dir.ravel()==0)[0];         
         
+        print('---------compute watershed------------------------------------')
         #initialize acc        
         self.search_upstream(sind0,ireturn=3,level_max=100)
         
+        print('---------sort watershed number--------------------------------')
         #reorder segment number
         acc0=self.acc.ravel()[sind0]; ind=flipud(argsort(acc0)); sind=sind0[ind]; 
         seg=arange(len(sind)).astype('int')+1
@@ -350,6 +350,11 @@ class dem_dir(object):
         
         #dem data
         if type(data)==str: #assume data is dem
+            #pre_proc
+            self.remove_nan_nodata();    
+            if not hasattr(self,'ds'): self.ds=self.dem.shape
+            
+            #change dem dimension
             self.dem=self.dem.ravel()
             dem0=self.dem
         else:
@@ -464,16 +469,180 @@ class dem_dir(object):
         dir=dir.reshape(ds)
         exec('self.{}=dir'.format(outname))        
         
-    def fill_depression(self):
-        
-        #change nan nodata to -99999
-        S.remove_nan_nodata();
-        
-        #resolve cells with dir==0, but with no upstream cells
-        self.compute_dir(method=1);
-        sind0=nonzero(self.dir.ravel()==0)[0]
+    def fill_depression(self,level_max=100):
+
+        #pre-define variables       
+        ds=self.ds; ym,xm=ds
+                
+        #resolve flats 
+        print('---------resolve DEM flats------------------------------------')
+        sind0=nonzero(self.dir.ravel()==0)[0]; 
         isum=self.search_upstream(sind0,ireturn=2)
+        self.resolve_flat(sind0[isum==0])    
+    
+        #resolve flats for single cells
+        sind0=nonzero(self.dir.ravel()==0)[0]; 
+        isum=self.search_upstream(sind0,ireturn=2)    
         self.search_flat(sind0[isum==0],ireturn=6)
+              
+        #identify depression catchment
+        sind0=nonzero(self.dir.ravel()==0)[0]; iy,ix=unravel_index(sind0,ds)
+        fp=(iy>0)*(iy<(ym-1))*(ix>0)*(ix<(xm-1)); sind0=sind0[fp]
+        
+        #search and mark each depression
+        print('---------identify and mark depressions------------------------')
+        slen=len(sind0); seg0=arange(slen)+1; h0=self.dem.ravel()[sind0];  
+        self.search_upstream(sind0,ireturn=3,seg=seg0,level_max=level_max)
+        
+        #get indices for each depression; here seg is numbering, not segment number
+        sind_segs=self.search_upstream(sind0,ireturn=9,seg=arange(slen),acc_calc=True,level_max=level_max)
+        ns0=array([len(i) for i in sind_segs])                  
+      
+        #get depression boundary
+        print('---------compute depression boundary--------------------------')
+        self.compute_boundary(sind=sind0); 
+            
+        #loop to reverse dir along streams
+        print('---------fill depressions-------------------------------------')
+        ids=arange(slen); iflag=0
+        while len(sind0)!=0:
+            iflag=iflag+1
+            print('fill depression: loop={}, ndep={}'.format(iflag,slen))
+            # slen=len(ids); h0=h00[ids]; sind0=sind00[ids]; ns0=ns00[ids]
+            # ids=arange(slen)
+            #-------------------------------------------------------------------------
+            #seg0,     ns0,     h0,      sind0,       sind_bnd,   h_bnd
+            #seg_min,  ns_min,  h0_min,  sind0_min,   sind_min,   h_min  h_bnd_min  dir_min
+            #-------------------------------------------------------------------------        
+            
+            #exclude nonboundary indices
+            sind_bnd_all=[]; ids_bnd=[]; id1=0; id2=0;  
+            for i in arange(len(sind0)):            
+                sindi=unique(self.boundary[i]); id2=id1+len(sindi)
+                sind_bnd_all.extend(sindi)        
+                ids_bnd.append(arange(id1,id2).astype('int')); id1=id1+len(sindi)                         
+            sind_bnd_all=array(sind_bnd_all);ids_bnd=array(ids_bnd)
+            flag_bnd_all=S.search_flat(sind_bnd_all,ireturn=10)
+            for i in arange(slen):
+                self.boundary[i]=sind_bnd_all[ids_bnd[i][flag_bnd_all[ids_bnd[i]]]]
+                
+            #recalcuate bnd for seg with false boundary
+            len_seg=array([len(i) for i in sind_segs]); 
+            len_bnd=array([len(i) for i in S.boundary])
+            idz=nonzero((len_bnd==0)*(len_seg!=0))[0]
+            if len(idz)!=0:
+                #save boundary first
+                boundary=self.boundary.copy(); delattr(self,'boundary')
+                self.compute_boundary(sind=sind0[idz],msg=False);
+                boundary[idz]=self.boundary
+                self.boundary=boundary; boundary=None
+                                        
+            #rearange the boundary index
+            sind_bnd_all=[]; ids_bnd=[]; id1=0; id2=0;  
+            for i in arange(len(sind0)):            
+                sindi=self.boundary[i]; id2=id1+len(sindi)
+                sind_bnd_all.extend(sindi)        
+                ids_bnd.append(arange(id1,id2).astype('int')); id1=id1+len(sindi)             
+            sind_bnd_all=array(sind_bnd_all);ids_bnd=array(ids_bnd);
+            
+            #find all the neighboring indices with minimum depth
+            sind_min_all,h_min_all,dir_min_all=self.search_flat(sind_bnd_all,ireturn=8)
+                    
+            #minimum for each seg
+            h_min=array([h_min_all[id].min() for id in ids_bnd])
+            mind=array([nonzero(h_min_all[id]==hi)[0][0] for id,hi in zip(ids_bnd,h_min)])        
+            sind_bnd=array([sind_bnd_all[id][mi] for id,mi in zip(ids_bnd,mind)]); h_bnd=self.dem.ravel()[sind_bnd]
+            sind_min=array([sind_min_all[id][mi] for id,mi in zip(ids_bnd,mind)])
+            dir_min=array([dir_min_all[id][mi] for id,mi in zip(ids_bnd,mind)])
+            
+            #get s0_min,h0_min,sind0_min
+            seg_min=self.seg.ravel()[sind_min]; fps=nonzero(seg_min!=0)[0]; 
+                    
+            ind_sort=argsort(seg_min[fps]);  
+            seg_1, ind_unique=unique(seg_min[fps[ind_sort]],return_inverse=True)
+            seg_2,iA,iB=intersect1d(seg_1,seg0,return_indices=True)        
+            ids_min=zeros(slen).astype('int'); ids_min[fps[ind_sort]]=ids[iB][ind_unique]
+            
+            ns_min=zeros(slen).astype('int');    ns_min[fps]=ns0[ids_min[fps]]
+            h0_min=-1e5*ones(slen);              h0_min[fps]=h0[ids_min[fps]]
+            sind0_min=-ones(slen).astype('int'); sind0_min[fps]=sind0[ids_min[fps]]
+            h_bnd_min=zeros(slen);               h_bnd_min[fps]=h_bnd[ids_min[fps]]
+        
+            #get stream from head to catchment
+            fp1=seg_min==0; 
+            fp2=(seg_min!=0)*(h0_min<h0); 
+            fp3=(seg_min!=0)*(h0_min==h0)*(ns_min>ns0)
+            fp4=(seg_min!=0)*(h0_min==h0)*(ns_min==ns0)*(h_bnd>h_bnd_min); 
+            fp5=(seg_min!=0)*(h0_min==h0)*(ns_min==ns0)*(h_bnd==h_bnd_min)*(sind0>sind0_min);         
+            fph=nonzero(fp1|fp2|fp3|fp4|fp5)[0]; sind_head=sind_bnd[fph]; 
+            sind_streams=self.search_downstream(sind_head,ireturn=2,msg=False)        
+                    
+            #get all stream index and its dir
+            t0=time.time(); sind=[]; dir=[];
+            for i in arange(len(fph)):
+                id=fph[i];    
+                #S.seg.ravel()[sind_segs[id]]=seg_min[id]; seg0[id]=seg_min[id]
+                sind_stream=sind_streams[i][:-1]
+                dir_stream=r_[dir_min[id],self.dir.ravel()[sind_stream][:-1]]            
+                sind.extend(sind_stream); dir.extend(dir_stream)
+            sind=array(sind); dir0=array(dir).copy(); dir=zeros(len(dir0)).astype('int')
+                
+            #reverse dir
+            dir_0=[128,64,32,16,8,4,2,1]; dir_inv=[8,4,2,1,128,64,32,16]
+            for i in arange(8):
+                fpr=dir0==dir_0[i]; dir[fpr]=dir_inv[i]
+            dt=time.time()-t0
+            self.dir.ravel()[sind]=dir;
+            
+            #----build the linkage--------------------------------------------------
+            s_0=seg0.copy(); d_0=seg_min.copy(); d_0[setdiff1d(arange(slen),fph)]=-1
+            while True:         
+                fpz=nonzero((d_0!=0)*(d_0!=-1))[0] 
+                if len(fpz)==0: break         
+            
+                #assign new value of d_0
+                s1=d_0[fpz].copy(); 
+                            
+                ind_sort=argsort(s1); 
+                s2,ind_unique=unique(s1[ind_sort],return_inverse=True)
+                s3,iA,iB=intersect1d(s2,s_0,return_indices=True)            
+                d_0[fpz[ind_sort]]=d_0[iB[ind_unique]]
+                
+                #assign new value fo s_0
+                s_0[fpz]=s1;
+            
+            #--------------------------
+            seg_stream=seg0[fph[d_0[fph]==-1]] #seg that flows to another seg (!=0)        
+            seg_tmp,iA,sid=intersect1d(seg_stream,seg0,return_indices=True)
+            
+            seg_target=s_0[fph[d_0[fph]==-1]]; tid=zeros(len(seg_target)).astype('int'); 
+            ind_sort=argsort(seg_target); seg_tmp, ind_unique=unique(seg_target[ind_sort],return_inverse=True)
+            seg_tmp,iA,iB=intersect1d(seg_target,seg0,return_indices=True);
+            tid[ind_sort]=iB[ind_unique]
+            #----------------------------------------------------------------------
+                        
+            #reset variables-----
+            ids_stream=ids[fph]; ids_left=setdiff1d(ids,ids_stream)        
+    
+            #collect boundary        
+            for si,ti in zip(sid,tid):                        
+                self.seg.ravel()[sind_segs[si]]=seg0[ti]
+                self.boundary[ti]=r_[self.boundary[ti],self.boundary[si]]
+                sind_segs[ti]=r_[sind_segs[ti],sind_segs[si]]
+                ns0[ti]=ns0[ti]+ns0[si]
+                   
+            #set other seg number to zeros
+            seg_stream2=seg0[fph[d_0[fph]==0]] #seg that flows to another seg (!=0)        
+            seg_tmp,iA,sid2=intersect1d(seg_stream2,seg0,return_indices=True)
+            for si in sid2:
+                self.seg.ravel()[sind_segs[si]]=0
+            
+            #update variables    
+            sind0=sind0[ids_left]; seg0=seg0[ids_left]; h0=h0[ids_left]; ns0=ns0[ids_left]
+            self.boundary=S.boundary[ids_left]; sind_segs=sind_segs[ids_left]
+            slen=len(sind0); ids=arange(slen)
+        #clean
+        delattr(self,'seg');delattr(self,'boundary')
            
     def resolve_flat(self,sind0=None,zlimit=0):
         #resolve flat based on following paper
@@ -1211,335 +1380,22 @@ class dem_dir(object):
 if __name__=="__main__":    
     close('all')
     
-    # S0=dem_dir();S0.read_data('S1.npz') 
-    
-    S=dem_dir(); S.read_data('S1_flats_fdem.npz'); S.ds=S.dem.shape; ds=S.ds; ym,xm=ds
-    dzm=min(diff(unique(S.dem)))*0.9; S.remove_nan_nodata();
-        
-    S.compute_dir(method=0);
-    
-    #resolve flats 
-    sind0=nonzero(S.dir.ravel()==0)[0]; 
-    isum=S.search_upstream(sind0,ireturn=2)
-    S.resolve_flat(sind0[isum==0])    
 
-    #resolve flats for single cells
-    sind0=nonzero(S.dir.ravel()==0)[0]; 
-    isum=S.search_upstream(sind0,ireturn=2)    
-    S.search_flat(sind0[isum==0],ireturn=6)
-          
-    #identify depression catchment
-    sind0=nonzero(S.dir.ravel()==0)[0]; iy,ix=unravel_index(sind0,ds)
-    fp=(iy>0)*(iy<(ym-1))*(ix>0)*(ix<(xm-1)); sind0=sind0[fp]
     
-    #search and mark each depression
-    slen=len(sind0); seg0=arange(slen)+1; h0=S.dem.ravel()[sind0];  
-    S.search_upstream(sind0,ireturn=3,seg=seg0,level_max=25)
-    
-    #get indices for each depression; here seg is numbering, not segment number
-    sind_segs=S.search_upstream(sind0,ireturn=9,seg=arange(slen),acc_calc=True,level_max=25)
-    ns0=array([len(i) for i in sind_segs])                  
-  
-    #get depression boundary
-    S.compute_boundary(sind=sind0); 
-        
-    #loop to reverse dir along streams
-    ids=arange(slen); iflag=0
-    while len(sind0)!=0:
-        iflag=iflag+1
-        print('fill depression: loop={}, ndep={}'.format(iflag,slen))
-        # slen=len(ids); h0=h00[ids]; sind0=sind00[ids]; ns0=ns00[ids]
-        # ids=arange(slen)
-        #-------------------------------------------------------------------------
-        #seg0,     ns0,     h0,      sind0,       sind_bnd,   h_bnd
-        #seg_min,  ns_min,  h0_min,  sind0_min,   sind_min,   h_min  h_bnd_min  dir_min
-        #-------------------------------------------------------------------------        
-        
-        #exclude nonboundary indices
-        sind_bnd_all=[]; ids_bnd=[]; id1=0; id2=0;  
-        for i in arange(len(sind0)):            
-            sindi=unique(S.boundary[i]); id2=id1+len(sindi)
-            sind_bnd_all.extend(sindi)        
-            ids_bnd.append(arange(id1,id2).astype('int')); id1=id1+len(sindi)                         
-        sind_bnd_all=array(sind_bnd_all);ids_bnd=array(ids_bnd)
-        flag_bnd_all=S.search_flat(sind_bnd_all,ireturn=10)
-        for i in arange(slen):
-            S.boundary[i]=sind_bnd_all[ids_bnd[i][flag_bnd_all[ids_bnd[i]]]]
-            
-        #recalcuate bnd for seg with false boundary
-        len_seg=array([len(i) for i in sind_segs]); 
-        len_bnd=array([len(i) for i in S.boundary])
-        idz=nonzero((len_bnd==0)*(len_seg!=0))[0]
-        if len(idz)!=0:
-            #save boundary first
-            boundary=S.boundary.copy(); delattr(S,'boundary')
-            S.compute_boundary(sind=sind0[idz],msg=False);
-            boundary[idz]=S.boundary
-            S.boundary=boundary; boundary=None
-                                    
-        #rearange the boundary index
-        sind_bnd_all=[]; ids_bnd=[]; id1=0; id2=0;  
-        for i in arange(len(sind0)):            
-            sindi=S.boundary[i]; id2=id1+len(sindi)
-            sind_bnd_all.extend(sindi)        
-            ids_bnd.append(arange(id1,id2).astype('int')); id1=id1+len(sindi)             
-        sind_bnd_all=array(sind_bnd_all);ids_bnd=array(ids_bnd);
-        
-        #find all the neighboring indices with minimum depth
-        sind_min_all,h_min_all,dir_min_all=S.search_flat(sind_bnd_all,ireturn=8)
-                
-        #minimum for each seg
-        h_min=array([h_min_all[id].min() for id in ids_bnd])
-        mind=array([nonzero(h_min_all[id]==hi)[0][0] for id,hi in zip(ids_bnd,h_min)])        
-        sind_bnd=array([sind_bnd_all[id][mi] for id,mi in zip(ids_bnd,mind)]); h_bnd=S.dem.ravel()[sind_bnd]
-        sind_min=array([sind_min_all[id][mi] for id,mi in zip(ids_bnd,mind)])
-        dir_min=array([dir_min_all[id][mi] for id,mi in zip(ids_bnd,mind)])
-        
-        #get s0_min,h0_min,sind0_min
-        seg_min=S.seg.ravel()[sind_min]; fps=nonzero(seg_min!=0)[0]; 
-                
-        ind_sort=argsort(seg_min[fps]);  
-        seg_1, ind_unique=unique(seg_min[fps[ind_sort]],return_inverse=True)
-        seg_2,iA,iB=intersect1d(seg_1,seg0,return_indices=True)        
-        ids_min=zeros(slen).astype('int'); ids_min[fps[ind_sort]]=ids[iB][ind_unique]
-        
-        ns_min=zeros(slen).astype('int');    ns_min[fps]=ns0[ids_min[fps]]
-        h0_min=-1e5*ones(slen);              h0_min[fps]=h0[ids_min[fps]]
-        sind0_min=-ones(slen).astype('int'); sind0_min[fps]=sind0[ids_min[fps]]
-        h_bnd_min=zeros(slen);               h_bnd_min[fps]=h_bnd[ids_min[fps]]
-    
-        #get stream from head to catchment
-        fp1=seg_min==0; 
-        fp2=(seg_min!=0)*(h0_min<h0); 
-        fp3=(seg_min!=0)*(h0_min==h0)*(ns_min>ns0)
-        fp4=(seg_min!=0)*(h0_min==h0)*(ns_min==ns0)*(h_bnd>h_bnd_min); 
-        fp5=(seg_min!=0)*(h0_min==h0)*(ns_min==ns0)*(h_bnd==h_bnd_min)*(sind0>sind0_min);         
-        fph=nonzero(fp1|fp2|fp3|fp4|fp5)[0]; sind_head=sind_bnd[fph]; 
-        sind_streams=S.search_downstream(sind_head,ireturn=2,msg=False)        
-                
-        #get all stream index and its dir
-        t0=time.time(); sind=[]; dir=[];
-        for i in arange(len(fph)):
-            id=fph[i];    
-            #S.seg.ravel()[sind_segs[id]]=seg_min[id]; seg0[id]=seg_min[id]
-            sind_stream=sind_streams[i][:-1]
-            dir_stream=r_[dir_min[id],S.dir.ravel()[sind_stream][:-1]]            
-            sind.extend(sind_stream); dir.extend(dir_stream)
-        sind=array(sind); dir0=array(dir).copy(); dir=zeros(len(dir0)).astype('int')
-            
-        #reverse dir
-        dir_0=[128,64,32,16,8,4,2,1]; dir_inv=[8,4,2,1,128,64,32,16]
-        for i in arange(8):
-            fpr=dir0==dir_0[i]; dir[fpr]=dir_inv[i]
-        dt=time.time()-t0
-        S.dir.ravel()[sind]=dir;
-        
-        #----build the linkage--------------------------------------------------
-        s_0=seg0.copy(); d_0=seg_min.copy(); d_0[setdiff1d(arange(slen),fph)]=-1
-        while True:         
-            fpz=nonzero((d_0!=0)*(d_0!=-1))[0] 
-            if len(fpz)==0: break         
-        
-            #assign new value of d_0
-            s1=d_0[fpz].copy(); 
-                        
-            ind_sort=argsort(s1); 
-            s2,ind_unique=unique(s1[ind_sort],return_inverse=True)
-            s3,iA,iB=intersect1d(s2,s_0,return_indices=True)            
-            d_0[fpz[ind_sort]]=d_0[iB[ind_unique]]
-            
-            #assign new value fo s_0
-            s_0[fpz]=s1;
-        
-        #--------------------------
-        seg_stream=seg0[fph[d_0[fph]==-1]] #seg that flows to another seg (!=0)        
-        seg_tmp,iA,sid=intersect1d(seg_stream,seg0,return_indices=True)
-        
-        seg_target=s_0[fph[d_0[fph]==-1]]; tid=zeros(len(seg_target)).astype('int'); 
-        ind_sort=argsort(seg_target); seg_tmp, ind_unique=unique(seg_target[ind_sort],return_inverse=True)
-        seg_tmp,iA,iB=intersect1d(seg_target,seg0,return_indices=True);
-        tid[ind_sort]=iB[ind_unique]
-        #----------------------------------------------------------------------
-                    
-        #reset variables-----
-        ids_stream=ids[fph]; ids_left=setdiff1d(ids,ids_stream)        
-
-        #collect boundary        
-        for si,ti in zip(sid,tid):                        
-            S.seg.ravel()[sind_segs[si]]=seg0[ti]
-            S.boundary[ti]=r_[S.boundary[ti],S.boundary[si]]
-            sind_segs[ti]=r_[sind_segs[ti],sind_segs[si]]
-            ns0[ti]=ns0[ti]+ns0[si]
-               
-        #set other seg number to zeros
-        seg_stream2=seg0[fph[d_0[fph]==0]] #seg that flows to another seg (!=0)        
-        seg_tmp,iA,sid2=intersect1d(seg_stream2,seg0,return_indices=True)
-        for si in sid2:
-            S.seg.ravel()[sind_segs[si]]=0
-        
-        #update variables    
-        sind0=sind0[ids_left]; seg0=seg0[ids_left]; h0=h0[ids_left]; ns0=ns0[ids_left]
-        S.boundary=S.boundary[ids_left]; sind_segs=sind_segs[ids_left]
-        slen=len(sind0); ids=arange(slen)    
-            
-    #compute watershed
-    S.compute_watershed();
-    imshow(S.acc,vmin=0,vmax=1e3)
-    
-
-#------------------------------------------------------------------------------
-    # import copy
-    
-    # S0=dem_dir();S0.read_data('S1.npz') 
-    
-    # S=dem_dir(); S.read_data('S1_DEM.npz'); S.ds=S.dem.shape; ds=S.ds; ym,xm=ds
-    # dzm=min(diff(unique(S.dem)))*0.9; S.remove_nan_nodata();
-        
-    # S.compute_dir(method=0);
-    
-    # #resolve flats 
-    # sind0=nonzero(S.dir.ravel()==0)[0]; 
-    # isum=S.search_upstream(sind0,ireturn=2)
-    # S.resolve_flat(sind0[isum==0])    
-
-    # #resolve flats for single cells
-    # sind0=nonzero(S.dir.ravel()==0)[0]; 
-    # isum=S.search_upstream(sind0,ireturn=2)    
-    # S.search_flat(sind0[isum==0],ireturn=6)
-      
-    # #identify depression catchment
-    # sind0=nonzero(S.dir.ravel()==0)[0]; iy,ix=unravel_index(sind0,ds)
-    # fp=(iy>0)*(iy<(ym-1))*(ix>0)*(ix<(xm-1)); sind0=sind0[fp]
-    
-    # #search and mark each depression
-    # slen=len(sind0); seg0=arange(slen)+1; h0=S.dem.ravel()[sind0];  
-    # S.search_upstream(sind0,ireturn=3,seg=seg0,level_max=100)
-    
-    # #get indices for each depression; here seg is numbering, not segment number
-    # sind_segs=S.search_upstream(sind0,ireturn=9,seg=arange(slen),acc_calc=True)
-    # ns0=array([len(i) for i in sind_segs]) 
-    
-    # #get depression boundary
-    # S.compute_boundary(sind=sind0); 
-    
-    # #loop to reverse dir along streams
-    # ids=arange(len(sind0))
-    # while len(sind0)!=0:
-    #     A0=S.dir.copy(); B0=S.seg.copy();
-    #     #-------------------------------------------------------------------------
-    #     #seg0,     ns0,     h0,      sind0,       sind_bnd,   h_bnd
-    #     #seg_min,  ns_min,  h0_min,  sind0_min,   sind_min,   h_min  h_bnd_min  dir_min
-    #     #-------------------------------------------------------------------------        
-    #     # #search and mark each depression
-    #     # slen=len(sind0); seg0=arange(slen)+1; h0=S.dem.ravel()[sind0];  
-    #     # S.search_upstream(sind0,ireturn=3,seg=seg0,level_max=100)
-        
-    #     # #get indices for each depression; here seg is numbering, not segment number
-    #     # sind_segs=S.search_upstream(sind0,ireturn=9,seg=arange(slen),acc_calc=True)
-    #     # ns0=array([len(i) for i in sind_segs])    
-            
-    #     # #get depression boundary
-    #     # S.compute_boundary(sind=sind0); 
-        
-    #     #rearange the boundary index
-    #     sind_bnd_all=[]; ids_bnd=[]; id1=0; id2=0;  
-    #     for i in arange(len(sind0)):            
-    #         sindi=unique(S.boundary[i]); id2=id1+len(sindi)
-    #         sind_bnd_all.extend(sindi)        
-    #         ids_bnd.append(arange(id1,id2).astype('int')); id1=id1+len(sindi)             
-    #     sind_bnd_all=array(sind_bnd_all);ids_bnd=array(ids_bnd);
-        
-    #     #find all the neighboring indices with minimum depth
-    #     sind_min_all,h_min_all,dir_min_all=S.search_flat(sind_bnd_all,ireturn=8)
-                
-    #     #minimum for each seg
-    #     h_min=array([h_min_all[id].min() for id in ids_bnd])
-    #     mind=array([nonzero(h_min_all[id]==hi)[0][0] for id,hi in zip(ids_bnd,h_min)])        
-    #     sind_bnd=array([sind_bnd_all[id][mi] for id,mi in zip(ids_bnd,mind)]); h_bnd=S.dem.ravel()[sind_bnd]
-    #     sind_min=array([sind_min_all[id][mi] for id,mi in zip(ids_bnd,mind)])
-    #     dir_min=array([dir_min_all[id][mi] for id,mi in zip(ids_bnd,mind)])
-        
-    #     #get s0_min,h0_min,sind0_min
-    #     seg_min=S.seg.ravel()[sind_min]; fps=nonzero(seg_min!=0)[0]; h_bnd_min=h_bnd[seg_min-1]
-    #     ns_min=zeros(slen).astype('int'); h0_min=-1e5*ones(slen); sind0_min=-ones(slen).astype('int') 
-    #     ns_min[fps]=ns0[seg_min[fps]-1];  h0_min[fps]=h0[seg_min[fps]-1]; sind0_min[fps]=sind0[seg_min[fps]-1];  
-    
-    #     #get stream from head to catchment
-    #     fp1=seg_min==0; 
-    #     fp2=(seg_min!=0)*(h0_min<h0); 
-    #     fp3=(seg_min!=0)*(h0_min==h0)*(ns_min>ns0)
-    #     fp4=(seg_min!=0)*(h0_min==h0)*(ns_min==ns0)*(h_bnd>h_bnd_min); 
-    #     fp5=(seg_min!=0)*(h0_min==h0)*(ns_min==ns0)*(h_bnd==h_bnd_min)*(sind0>sind0_min);         
-    #     fph=nonzero(fp1|fp2|fp3|fp4|fp5)[0]; sind_head=sind_bnd[fph]; 
-    #     sind_streams=S.search_downstream(sind_head,ireturn=2)
-        
-    #     #get all stream index and its dir
-    #     t0=time.time(); sind=[]; dir=[];
-    #     for i in arange(len(fph)):
-    #         id=fph[i];    
-    #         #S.seg.ravel()[sind_segs[id]]=seg_min[id]; seg0[id]=seg_min[id]
-    #         sind_stream=sind_streams[i][:-1]
-    #         dir_stream=r_[dir_min[id],S.dir.ravel()[sind_stream][:-1]]            
-    #         sind.extend(sind_stream); dir.extend(dir_stream)
-    #     sind=array(sind); dir0=array(dir).copy(); dir=zeros(len(dir0)).astype('int')
-            
-    #     #reverse dir
-    #     dir_0=[128,64,32,16,8,4,2,1]; dir_inv=[8,4,2,1,128,64,32,16]
-    #     for i in arange(8):
-    #         fpr=dir0==dir_0[i]; dir[fpr]=dir_inv[i]
-    #     dt=time.time()-t0
-    #     S.dir.ravel()[sind]=dir;
-                
-    #     #reset variables---------
-    #     sind0=setdiff1d(sind0,sind0[fph]); delattr(S,'seg')
-    #     #search and mark each depression
-    #     slen=len(sind0); seg0=arange(slen)+1; h0=S.dem.ravel()[sind0];  
-    #     S.search_upstream(sind0,ireturn=3,seg=seg0,level_max=100)
-        
-    #     #get indices for each depression; here seg is numbering, not segment number
-    #     sind_segs=S.search_upstream(sind0,ireturn=9,seg=arange(slen),acc_calc=True)
-    #     ns0=array([len(i) for i in sind_segs]) 
-        
-    #     #get depression boundary
-    #     S.compute_boundary(sind=sind0); 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
- 
-
 #------write shapefile---------------------------------------------------------
-    # S=dem_dir(); S.read_data('S2.npz'); 
-    # acc_limit=1e2; seg=arange(1,1e5)
-    # S.compute_river(seg,acc_limit=acc_limit,apply_mask=True)
-    # S.write_shapefile('rivers','B_rivers')
-    # # S.compute_boundary(seg,acc_limit=acc_limit)            
-    # # S.write_shapefile('boundary','B_boundary')    
+    acc_limit=1e2; seg=arange(1,1e5)
+    S0=dem_dir(); S0.read_data('S2.npz')
+    
+    S=dem_dir(); 
+    S.read_data('S2_DEM.npz'); S.affine=S0.affine
+    S.compute_dir()
+    S.fill_depression(level_max=100)
+    S.compute_watershed()
+      
+    S.compute_river(seg,acc_limit=acc_limit)
+    S.write_shapefile('rivers','A_rivers')
+    # S.compute_boundary(seg,acc_limit=acc_limit)            
+    # S.write_shapefile('boundary','B_boundary')    
 
 #--------------------------precalculation--------------------------------------
     # # # # # # # # #--------------------------------------------------------------
@@ -1701,4 +1557,178 @@ if __name__=="__main__":
     #     xi[fp]=nan; yi[fp]=nan;
         
     #     plot(xi,yi,'r-')    
+
+#-------------------------test fill depression---------------------------------
+    # S=dem_dir(); S.read_data('S1_flats_fdem.npz'); S.ds=S.dem.shape; ds=S.ds; ym,xm=ds
+    # dzm=min(diff(unique(S.dem)))*0.9; S.remove_nan_nodata();
+        
+    # S.compute_dir(method=0);
+    
+    # #resolve flats 
+    # sind0=nonzero(S.dir.ravel()==0)[0]; 
+    # isum=S.search_upstream(sind0,ireturn=2)
+    # S.resolve_flat(sind0[isum==0])    
+
+    # #resolve flats for single cells
+    # sind0=nonzero(S.dir.ravel()==0)[0]; 
+    # isum=S.search_upstream(sind0,ireturn=2)    
+    # S.search_flat(sind0[isum==0],ireturn=6)
+          
+    # #identify depression catchment
+    # sind0=nonzero(S.dir.ravel()==0)[0]; iy,ix=unravel_index(sind0,ds)
+    # fp=(iy>0)*(iy<(ym-1))*(ix>0)*(ix<(xm-1)); sind0=sind0[fp]
+    
+    # #search and mark each depression
+    # slen=len(sind0); seg0=arange(slen)+1; h0=S.dem.ravel()[sind0];  
+    # S.search_upstream(sind0,ireturn=3,seg=seg0,level_max=25)
+    
+    # #get indices for each depression; here seg is numbering, not segment number
+    # sind_segs=S.search_upstream(sind0,ireturn=9,seg=arange(slen),acc_calc=True,level_max=25)
+    # ns0=array([len(i) for i in sind_segs])                  
+  
+    # #get depression boundary
+    # S.compute_boundary(sind=sind0); 
+        
+    # #loop to reverse dir along streams
+    # ids=arange(slen); iflag=0
+    # while len(sind0)!=0:
+    #     iflag=iflag+1
+    #     print('fill depression: loop={}, ndep={}'.format(iflag,slen))
+    #     # slen=len(ids); h0=h00[ids]; sind0=sind00[ids]; ns0=ns00[ids]
+    #     # ids=arange(slen)
+    #     #-------------------------------------------------------------------------
+    #     #seg0,     ns0,     h0,      sind0,       sind_bnd,   h_bnd
+    #     #seg_min,  ns_min,  h0_min,  sind0_min,   sind_min,   h_min  h_bnd_min  dir_min
+    #     #-------------------------------------------------------------------------        
+        
+    #     #exclude nonboundary indices
+    #     sind_bnd_all=[]; ids_bnd=[]; id1=0; id2=0;  
+    #     for i in arange(len(sind0)):            
+    #         sindi=unique(S.boundary[i]); id2=id1+len(sindi)
+    #         sind_bnd_all.extend(sindi)        
+    #         ids_bnd.append(arange(id1,id2).astype('int')); id1=id1+len(sindi)                         
+    #     sind_bnd_all=array(sind_bnd_all);ids_bnd=array(ids_bnd)
+    #     flag_bnd_all=S.search_flat(sind_bnd_all,ireturn=10)
+    #     for i in arange(slen):
+    #         S.boundary[i]=sind_bnd_all[ids_bnd[i][flag_bnd_all[ids_bnd[i]]]]
+            
+    #     #recalcuate bnd for seg with false boundary
+    #     len_seg=array([len(i) for i in sind_segs]); 
+    #     len_bnd=array([len(i) for i in S.boundary])
+    #     idz=nonzero((len_bnd==0)*(len_seg!=0))[0]
+    #     if len(idz)!=0:
+    #         #save boundary first
+    #         boundary=S.boundary.copy(); delattr(S,'boundary')
+    #         S.compute_boundary(sind=sind0[idz],msg=False);
+    #         boundary[idz]=S.boundary
+    #         S.boundary=boundary; boundary=None
+                                    
+    #     #rearange the boundary index
+    #     sind_bnd_all=[]; ids_bnd=[]; id1=0; id2=0;  
+    #     for i in arange(len(sind0)):            
+    #         sindi=S.boundary[i]; id2=id1+len(sindi)
+    #         sind_bnd_all.extend(sindi)        
+    #         ids_bnd.append(arange(id1,id2).astype('int')); id1=id1+len(sindi)             
+    #     sind_bnd_all=array(sind_bnd_all);ids_bnd=array(ids_bnd);
+        
+    #     #find all the neighboring indices with minimum depth
+    #     sind_min_all,h_min_all,dir_min_all=S.search_flat(sind_bnd_all,ireturn=8)
+                
+    #     #minimum for each seg
+    #     h_min=array([h_min_all[id].min() for id in ids_bnd])
+    #     mind=array([nonzero(h_min_all[id]==hi)[0][0] for id,hi in zip(ids_bnd,h_min)])        
+    #     sind_bnd=array([sind_bnd_all[id][mi] for id,mi in zip(ids_bnd,mind)]); h_bnd=S.dem.ravel()[sind_bnd]
+    #     sind_min=array([sind_min_all[id][mi] for id,mi in zip(ids_bnd,mind)])
+    #     dir_min=array([dir_min_all[id][mi] for id,mi in zip(ids_bnd,mind)])
+        
+    #     #get s0_min,h0_min,sind0_min
+    #     seg_min=S.seg.ravel()[sind_min]; fps=nonzero(seg_min!=0)[0]; 
+                
+    #     ind_sort=argsort(seg_min[fps]);  
+    #     seg_1, ind_unique=unique(seg_min[fps[ind_sort]],return_inverse=True)
+    #     seg_2,iA,iB=intersect1d(seg_1,seg0,return_indices=True)        
+    #     ids_min=zeros(slen).astype('int'); ids_min[fps[ind_sort]]=ids[iB][ind_unique]
+        
+    #     ns_min=zeros(slen).astype('int');    ns_min[fps]=ns0[ids_min[fps]]
+    #     h0_min=-1e5*ones(slen);              h0_min[fps]=h0[ids_min[fps]]
+    #     sind0_min=-ones(slen).astype('int'); sind0_min[fps]=sind0[ids_min[fps]]
+    #     h_bnd_min=zeros(slen);               h_bnd_min[fps]=h_bnd[ids_min[fps]]
+    
+    #     #get stream from head to catchment
+    #     fp1=seg_min==0; 
+    #     fp2=(seg_min!=0)*(h0_min<h0); 
+    #     fp3=(seg_min!=0)*(h0_min==h0)*(ns_min>ns0)
+    #     fp4=(seg_min!=0)*(h0_min==h0)*(ns_min==ns0)*(h_bnd>h_bnd_min); 
+    #     fp5=(seg_min!=0)*(h0_min==h0)*(ns_min==ns0)*(h_bnd==h_bnd_min)*(sind0>sind0_min);         
+    #     fph=nonzero(fp1|fp2|fp3|fp4|fp5)[0]; sind_head=sind_bnd[fph]; 
+    #     sind_streams=S.search_downstream(sind_head,ireturn=2,msg=False)        
+                
+    #     #get all stream index and its dir
+    #     t0=time.time(); sind=[]; dir=[];
+    #     for i in arange(len(fph)):
+    #         id=fph[i];    
+    #         #S.seg.ravel()[sind_segs[id]]=seg_min[id]; seg0[id]=seg_min[id]
+    #         sind_stream=sind_streams[i][:-1]
+    #         dir_stream=r_[dir_min[id],S.dir.ravel()[sind_stream][:-1]]            
+    #         sind.extend(sind_stream); dir.extend(dir_stream)
+    #     sind=array(sind); dir0=array(dir).copy(); dir=zeros(len(dir0)).astype('int')
+            
+    #     #reverse dir
+    #     dir_0=[128,64,32,16,8,4,2,1]; dir_inv=[8,4,2,1,128,64,32,16]
+    #     for i in arange(8):
+    #         fpr=dir0==dir_0[i]; dir[fpr]=dir_inv[i]
+    #     dt=time.time()-t0
+    #     S.dir.ravel()[sind]=dir;
+        
+    #     #----build the linkage--------------------------------------------------
+    #     s_0=seg0.copy(); d_0=seg_min.copy(); d_0[setdiff1d(arange(slen),fph)]=-1
+    #     while True:         
+    #         fpz=nonzero((d_0!=0)*(d_0!=-1))[0] 
+    #         if len(fpz)==0: break         
+        
+    #         #assign new value of d_0
+    #         s1=d_0[fpz].copy(); 
+                        
+    #         ind_sort=argsort(s1); 
+    #         s2,ind_unique=unique(s1[ind_sort],return_inverse=True)
+    #         s3,iA,iB=intersect1d(s2,s_0,return_indices=True)            
+    #         d_0[fpz[ind_sort]]=d_0[iB[ind_unique]]
+            
+    #         #assign new value fo s_0
+    #         s_0[fpz]=s1;
+        
+    #     #--------------------------
+    #     seg_stream=seg0[fph[d_0[fph]==-1]] #seg that flows to another seg (!=0)        
+    #     seg_tmp,iA,sid=intersect1d(seg_stream,seg0,return_indices=True)
+        
+    #     seg_target=s_0[fph[d_0[fph]==-1]]; tid=zeros(len(seg_target)).astype('int'); 
+    #     ind_sort=argsort(seg_target); seg_tmp, ind_unique=unique(seg_target[ind_sort],return_inverse=True)
+    #     seg_tmp,iA,iB=intersect1d(seg_target,seg0,return_indices=True);
+    #     tid[ind_sort]=iB[ind_unique]
+    #     #----------------------------------------------------------------------
+                    
+    #     #reset variables-----
+    #     ids_stream=ids[fph]; ids_left=setdiff1d(ids,ids_stream)        
+
+    #     #collect boundary        
+    #     for si,ti in zip(sid,tid):                        
+    #         S.seg.ravel()[sind_segs[si]]=seg0[ti]
+    #         S.boundary[ti]=r_[S.boundary[ti],S.boundary[si]]
+    #         sind_segs[ti]=r_[sind_segs[ti],sind_segs[si]]
+    #         ns0[ti]=ns0[ti]+ns0[si]
+               
+    #     #set other seg number to zeros
+    #     seg_stream2=seg0[fph[d_0[fph]==0]] #seg that flows to another seg (!=0)        
+    #     seg_tmp,iA,sid2=intersect1d(seg_stream2,seg0,return_indices=True)
+    #     for si in sid2:
+    #         S.seg.ravel()[sind_segs[si]]=0
+        
+    #     #update variables    
+    #     sind0=sind0[ids_left]; seg0=seg0[ids_left]; h0=h0[ids_left]; ns0=ns0[ids_left]
+    #     S.boundary=S.boundary[ids_left]; sind_segs=sind_segs[ids_left]
+    #     slen=len(sind0); ids=arange(slen)    
+            
+    # #compute watershed
+    # S.compute_watershed();
+    # imshow(S.acc,vmin=0,vmax=1e3)
     
