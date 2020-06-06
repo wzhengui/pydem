@@ -1,176 +1,10 @@
 #!/usr/bin/env python3
 #this is the python library used to extracted river network from DEM
 from pylib import *
-from pysheds.grid import Grid
-from affine import Affine
-
-# def read_deminfo(path,name='dem',size_subdomain=5e5, **kwargs):
-#     if path.endswith('tif'):
-#         gd=SGrid.from_raster(path, data_name, **kwargs);
-#     elif path.endswith('asc'):
-#         gd=dem_data(); gd.add_deminfo(path,name,size_subdomain=size_subdomain);
-        
-#         # gd=SGrid.from_ascii(path, data_name, header_only=True,**kwargs)
-#         #gd=SGrid.from_ascii(path, data_name, header_only=header_only,window=window,**kwargs);           
-#     return gd 
-
-# class dem_data(object):
-#     def __init__(self):
-#         self.name=[]
-#         pass
-    
-#     def read_dem_data(self, name=None,index_domain=None,dem_data=None):
-#         #read dem data for each subdomain        
-#         if name==None:
-#            sname=self.name
-#         elif type(name)==str:
-#            sname=[name,]
-#         elif type(name)==list:
-#            sname=sname
-#         else:
-#            sys.exit('unknow name type')
-                   
-                
-#         for snamei in sname:
-#             S=npz_data();exec('S.dinfo=self.{}_info'.format(snamei)); dinfo=S.dinfo;
-            
-#             #read sample              
-#             if dem_data is not None:
-#                 data0=SGrid.from_ascii(dinfo.path,'data',skiprows=6,usecols=arange(5),max_rows=5)
-            
-#             #get indices of subdomain
-#             if index_domain==None:
-#                 sind=arange(dinfo.nsubdomain)
-#             elif type(index_domain)==list:
-#                 sind=index_domain
-#             else:
-#                 sind=[index_domain]
-             
-#             #read data for each subdomain
-#             data=[]
-#             for sindi in sind:
-#                 dm=dinfo.domains[sindi]
-                
-#                 if dem_data is None:
-#                     datai=SGrid.from_ascii(dm.path,'data',skiprows=dm.skiprows,usecols=dm.usecols,max_rows=dm.max_rows, affine_new=dm.affine);
-#                 else:           
-#                     datai=data0;
-#                     dem=dem_data[dm.ixy[0]:dm.ixy[1],dm.ixy[2]:dm.ixy[3]]                 
-#                     datai.add_gridded_data(data=dem, data_name='data', affine=dm.affine, shape=dm.shape,
-#                                crs=data0.crs, nodata=data0.nodata, metadata={}) 
-#                     datai.shape=dm.shape; datai.mask=ones(dm.shape)==1
-                  
-#                 data.append(datai)
-#             exec('self.{}_data=data'.format(snamei))
-                            
-#     def add_deminfo(self,path,name,size_subdomain=5e6):
-#         # 1G~=6e7 pts; 100M~=5e6 pts
-                
-#         #read *asc info
-#         gd=SGrid.from_ascii(path,'name',header_only=True)
-        
-#         #dem information
-#         nrows=gd.shape[0]; ncols=gd.shape[1]; 
-#         xll=gd.affine[2]; yll=gd.affine[5]; cellsize=gd.affine[0]
-        
-#         #save dem information 
-#         deminfo=npz_data(); deminfo.type='ascii'; deminfo.path=path
-#         deminfo.ncols=ncols; deminfo.nrows=nrows; deminfo.xll=xll; deminfo.yll=yll; deminfo.cellsize=cellsize; 
-#         deminfo.affine=gd.affine; deminfo.bbox=gd.bbox; deminfo.extent=gd.extent
-        
-#         #divide the domain into subdomains
-#         ndem0=max(around(gd.size/size_subdomain),1); nx=int(round(sqrt(ndem0))); ny=int(ndem0/nx); ndem=nx*ny
-#         deminfo.nsubdomain=ndem; deminfo.nx=nx; deminfo.ny=ny; deminfo.size=gd.size; deminfo.domains=[]; 
-    
-#         dy0=int(floor(nrows/ny)); dx0=int(floor(ncols/nx))
-#         offset=int(min(dy0/2,dx0/2,500))
-#         for i in arange(ny):
-#             #subdomain index
-#             if ny==1:
-#                 dy=dy0; iy=0; ylli=yll; indy=[0,dy];                                
-#             else:
-#                 if i==0:
-#                     dy=dy0+offset; iy=0; ylli=yll; indy=[0,dy-offset]
-#                 elif i==(ny-1):
-#                     dy=nrows-(ny-1)*dy0+offset; iy=i*dy0-offset; ylli=yll-iy*cellsize; indy=[offset,dy]
-#                 else:
-#                     dy=dy0+2*offset; iy=i*dy0-offset; ylli=yll-iy*cellsize; indy=[offset,-offset]                    
-            
-#             for j in arange(nx):
-#                 #subdomain index
-#                 if nx==1:
-#                     dx=dx0; ix=0; xlli=xll; indx=[0,dx]                               
-#                 else:
-#                     if j==0:
-#                         dx=dx0+offset; ix=0; xlli=xll; indx=[0,dx-offset]
-#                     elif j==(nx-1):
-#                         dx=ncols-(nx-1)*dx0+offset; ix=j*dx0-offset; xlli=xll+ix*cellsize; indx=[offset,dx]
-#                     else:
-#                         dx=dx0+2*offset; ix=j*dx0-offset; xlli=xll+ix*cellsize; indx=[offset,-offset]    
-                
-#                 #save subdomain info
-#                 datai=npz_data()
-                
-#                 datai.path=path
-#                 datai.affine=Affine(cellsize,0,xlli,0,-cellsize,ylli)        
-#                 datai.bbox=(xlli,ylli-(dy-1)*cellsize,xlli+(dx-1)*cellsize,ylli)
-#                 datai.extent=(xlli,xlli+(dx-1)*cellsize,ylli-(dy-1)*cellsize,ylli)
-#                 datai.size=dx*dy
-#                 datai.shape=(dy,dx)
-#                 datai.skiprows=6+iy
-#                 datai.usecols=range(ix,ix+dx)
-#                 datai.max_rows=dy
-#                 datai.rind=[*indy,*indx]    #extract data from subdomain
-#                 datai.ixy=[iy,iy+dy,ix,ix+dx] #extract data for subdomain
-                
-#                 deminfo.domains.append(datai)
-          
-#         exec('self.{}_info=deminfo'.format(name))
-#         self.name.append(name)
-    
-# class SGrid(Grid): 
-        
-#     @classmethod
-#     def from_ascii(cls, path, data_name,header_only=False,affine_new=None,**kwargs):          
-#           newinstance = cls()
-#           newinstance.read_ascii(path, data_name,header_only=header_only,affine_new=affine_new,**kwargs)          
-#           return newinstance
-                  
-#     #define new object for adding new method to original Grid Obect
-#     def read_ascii(self, data, data_name, skiprows=6, crs=Proj('epsg:4326'),
-#                     xll='lower', yll='lower', metadata={},header_only=False, affine_new=None, **kwargs):
-#         #copy from pyshed's function
-#          import ast                               
-#          with open(data) as header:
-#              ncols = int(header.readline().split()[1])
-#              nrows = int(header.readline().split()[1])
-#              xll = ast.literal_eval(header.readline().split()[1])
-#              yll = ast.literal_eval(header.readline().split()[1])
-#              cellsize = ast.literal_eval(header.readline().split()[1])
-#              nval=header.readline().split()[1];
-#              if nval.lower() in ('nan','-nan'):
-#                  nodata=nan
-#              else:
-#                  nodata = ast.literal_eval(nval)
-#              shape = (nrows, ncols)
-#          if header_only:
-#              data=array([]);
-#          else:
-#              data = np.loadtxt(data, skiprows=skiprows, **kwargs)
-#              nodata = data.dtype.type(nodata)         
-#          if affine_new==None:
-#              affine = Affine(cellsize, 0, xll, 0, -cellsize, yll + (nrows-1)*cellsize)
-#          else:
-#              affine=affine_new; shape=data.shape
-#          self.add_gridded_data(data=data, data_name=data_name, affine=affine, shape=shape,
-#                                crs=crs, nodata=nodata, metadata=metadata)
-
-
-
          
 class dem(object):
     def __init__(self):
-        pass                                             
+        pass      
     
     def read_data(self,path):
         #read saved dir data
@@ -190,6 +24,193 @@ class dem(object):
         for svar in svars:
             exec('S.{}=self.{}'.format(svar,svar))
         save_npz(fname,S)
+    
+    def read_demdata(self,outname='dem',data=None,save_bnd=True):   
+        #read dem raw data from info.name or data
+        #save_bnd: save values on boundary
+
+        info=self.info
+        #read data directly                
+        if data is None:            
+            if info.name.endswith('.asc'):
+                data=loadtxt(info.name,skiprows=info.skiprows,max_rows=info.max_rows,usecols=info.usecols)
+                exec('self.{}=data'.format(outname))
+        else:
+            #extract data        
+            rind=info.ind_read;        
+            exec('self.{}=data[{}:{},{}:{}].copy()'.format(outname,*info.ind_read))
+        
+        #save bnd values
+        self.save_bnd_value()
+    
+    def collect_subdomain_data(self,name='dem',outname='dem'):
+        #collect subdomain values to reconstruct domain data
+        
+        #initialize
+        exec('self.{}=ones(self.info.ds)*self.info.nodata'.format(outname))
+        
+        #colloect data and also bnd dir and dem
+        sind_bnd_local=[]; dem_bnd_local=[]; dir_bnd_local=[]
+        for i in arange(self.info.nsubdomain):
+            eind=self.domains[i].info.ind_extract
+            cind=self.info.ind_collect[i]
+            exec('self.{}[{}:{},{}:{}]=self.domains[{}].{}[{}:{},{}:{}]'.format(outname,*cind,i,name,*eind))
+            
+            #bnd info
+            sind_bnd_local.extend(self.domains[i].info.sind_bnd_global)
+            if hasattr(self.domains[i].info,'dir_bnd'): dir_bnd_local.extend(self.domains[i].info.dir_bnd)
+            if hasattr(self.domains[i].info,'dem_bnd'): dem_bnd_local.extend(self.domains[i].info.dem_bnd)
+        self.info.sind_bnd_local=array(sind_bnd_local)
+        self.info.dir_bnd_local=array(dir_bnd_local)
+        self.info.dem_bnd_local=array(dem_bnd_local)
+    
+    def collapse_subdomain(self,svars=['dem','dir']):
+        #this function is used to remove outer zone of subdomain
+        if not self.info.is_subdomain: return
+                
+        #extract the domain data
+        eind=self.info.ind_extract
+        for svar in svars:
+            if not hasattr(self,svar): continue
+            exec('self.{}=self.{}[{}:{},{}:{}].copy()'.format(svar,svar,*eind))
+        
+        #update other information of subdomain
+        iy1,iy2,ix1,ix2=eind; ym=iy2-iy1; xm=ix2-ix1
+        yll,xll,dxy=self.info.header[2:]
+        self.info.header=[ym,xm,yll+iy1*dxy,xll+ix1*dxy,dxy]
+        self.info.ds=[ym,xm]
+        self.info.extent=[xll+ix1*dxy,xll+(ix2-1)*dxy,yll+iy1*dxy,yll+(iy2-1)*dxy]
+        self.info.skiprows=self.info.skiprows+iy1
+        self.info.usecols=self.info.usecols[ix1:ix2]
+        self.info.max_rows=ym
+        
+        #local index
+        biy=r_[zeros(xm),ones(xm)*(ym-1),arange(1,ym-1),arange(1,ym-1)].astype('int')
+        bix=r_[arange(xm),arange(xm),zeros(ym-2),ones(ym-2)*(xm-1)].astype('int')
+        self.info.sind_bnd=ravel_multi_index([biy,bix],self.info.ds)
+                
+        rind=self.info.ind_read;
+        self.info.ind_read=[rind[0]+iy1,rind[0]+iy1+ym,rind[2]+ix1,rind[2]+ix1+xm]
+        self.info.ind_extract=[0,ym,0,xm]   
+    
+        #global index
+        biy=biy+rind[0]+iy1; bix=bix+rind[2]+ix1
+        self.info.sind_bnd_global=ravel_multi_index([biy,bix],self.info.ds_global)
+        
+        #bnd
+        self.save_bnd_value()
+               
+    def save_bnd_value(self):
+        #save bnd values of dem and dir
+        if hasattr(self,'dem'): self.info.dem_bnd=self.dem.ravel()[self.info.sind_bnd].copy()
+        if hasattr(self,'dir'): self.info.dir_bnd=self.dir.ravel()[self.info.sind_bnd].copy() 
+                                                         
+    def read_deminfo(self,name,subdomain_size=5e6,offset=0):
+        #read header info, and divide the data to subdomains based on subdomain_size
+        #work for *asc, add other format later
+        
+        self.info=npz_data()
+        #read header
+        if name.endswith('.asc'):
+            with open(name,'r') as fid:
+                xm=int(fid.readline().split()[1])
+                ym=int(fid.readline().split()[1])
+                xll=float(fid.readline().split()[1])
+                yll=float(fid.readline().split()[1])
+                dxy=float(fid.readline().split()[1])
+                nval=fid.readline().split()[1]
+                if nval.lower() in ('nan','-nan'):
+                    nodata=nan
+                else:
+                    nodata=float(nval)
+                
+        #process info
+        nsize=ym*xm; 
+        self.info.name=name
+        self.info.header=[ym,xm,yll,xll,dxy]
+        self.info.nodata=nodata
+        self.info.ds=[ym,xm]; 
+        # self.info.shape=[ym,xm]; 
+        self.info.extent=[xll,xll+(xm-1)*dxy,yll,yll+(ym-1)*dxy]
+        self.info.skiprows=6
+        self.info.usecols=arange(xm).astype('int')
+        self.info.max_rows=ym        
+        self.info.ind_read=[0,ym,0,xm]
+        
+        biy=r_[zeros(xm),ones(xm)*(ym-1),arange(1,ym-1),arange(1,ym-1)].astype('int')
+        bix=r_[arange(xm),arange(xm),zeros(ym-2),ones(ym-2)*(xm-1)].astype('int')
+        self.info.sind_bnd=ravel_multi_index([biy,bix],self.info.ds)
+        
+        #divide the domain into subdomains       
+        nsub=max(around(nsize/subdomain_size),1);         
+        nx=max(int(round(sqrt(nsub))),1); ny=max(int(nsub/nx),1);
+        dy0=int(floor(ym/ny)); dx0=int(floor(xm/nx))        
+        
+        self.info.is_subdomain=False
+        self.info.nsubdomain=nx*ny; 
+        self.info.subdomain_shape=[ny,nx]
+        self.info.subdomain_size=[dy0,dx0]
+        self.info.ind_collect=[]
+        self.domains=[]
+
+        #calcuate subdomain info        
+        for i in arange(ny):
+            dy00=dy0
+            #subdomain index
+            if ny==1:
+                iy=0; dy=dy0; ylli=yll; indy=[0,dy]; cindy=[0,dy0]
+            else:
+                if i==0:
+                    iy=0;  dy=dy0+offset;  ylli=yll; indy=[0,dy-offset]; cindy=[0,dy0]
+                elif i==(ny-1):
+                    iy=i*dy0-offset;  dy=ym-iy;  ylli=yll+iy*dxy;  indy=[offset,dy]; dy00=dy-offset; cindy=[i*dy0,ym]
+                else:
+                    iy=i*dy0-offset;  dy=dy0+2*offset;  ylli=yll+iy*dxy; indy=[offset,dy-offset]; cindy=[i*dy0,(i+1)*dy0]
+            
+            dx00=dx0
+            for k in arange(nx):                                
+                #subdomain index
+                if nx==1:
+                    ix=0;  dx=dx0;  xlli=xll; indx=[0,dx]; cindx=[0,dx0]
+                else:
+                    if k==0:
+                        ix=0;  dx=dx0+offset;  xlli=xll; indx=[0,dx-offset]; cindx=[0,dx0]
+                    elif k==(nx-1):
+                        ix=k*dx0-offset; dx=xm-ix;  xlli=xll+ix*dxy; indx=[offset,dx]; dx00=dx-offset; cindx=[k*dx0,xm]
+                    else:
+                        ix=k*dx0-offset; dx=dx0+2*offset;  xlli=xll+ix*dxy; indx=[offset,dx-offset]; cindx=[k*dx0,(k+1)*dx0]
+                
+                #save subdomain info
+                sinfo=npz_data();     
+                sinfo.name=name                    
+                sinfo.header=[dy,dx,ylli,xlli,dxy]
+                sinfo.nodata=nodata
+                sinfo.ds=[dy,dx]
+                sinfo.ds_global=[ym,xm]
+                # sinfo.shape=[dy00,dx00]
+                sinfo.extent=[xlli,xlli+(dx-1)*dxy,ylli,ylli+(dy-1)*dxy]
+                sinfo.skiprows=6+iy
+                sinfo.usecols=arange(ix,ix+dx).astype('int')
+                sinfo.max_rows=dy
+                sinfo.is_subdomain=True
+                
+                #local boundary index
+                biy=r_[zeros(dx),ones(dx)*(dy-1),arange(1,dy-1),arange(1,dy-1)].astype('int')
+                bix=r_[arange(dx),arange(dx),zeros(dy-2),ones(dy-2)*(dx-1)].astype('int')
+                sinfo.sind_bnd=ravel_multi_index([biy,bix],sinfo.ds)
+                
+                #global boundary index
+                biy=biy+iy; bix=bix+ix;
+                sinfo.sind_bnd_global=ravel_multi_index([biy,bix],[ym,xm])
+                
+                sinfo.ind_read=[iy,iy+dy,ix,ix+dx] #index in domain: extract domain data for subdomain
+                sinfo.ind_extract=[*indy,*indx]    #index in subdomain: extract subdomain data to constrcut domain data   
+                ind_collect=[*cindy,*cindx]        #index in domain: extract subdomain data to constrcut domain data   
+                sinfo.nsubdomain=0
+                
+                sdata=dem(); sdata.info=sinfo
+                self.domains.append(sdata)   
+                self.info.ind_collect.append(ind_collect)
         
     def compute_river(self,seg=None,sind=None,acc_limit=1e4,nodata=None,apply_mask=False):   
         #compute river network for watersheds 
@@ -213,7 +234,7 @@ class dem(object):
             sind0=nonzero(self.dir.ravel()==0)[0]; seg0=self.seg.ravel()[sind0]
                     
         #pre-define varibles, will update in the loop
-        if nodata is None: nodata=self.nodata
+        if nodata is None: nodata=self.info.nodata
         sind=sind0; slen=len(sind); 
         num=arange(slen).astype('int'); pind0=None; 
         
@@ -230,7 +251,7 @@ class dem(object):
             for i in arange(slen):            
                 if pind0 is not None: self.rivers[num[i]].append(pind0[i])
                 self.rivers[num[i]].extend(sind_list[i])
-                self.rivers[num[i]].append(self.nodata)
+                self.rivers[num[i]].append(self.info.nodata)
             
             #create new pind for search 
             pind=[]; pnum=[]; 
@@ -250,10 +271,10 @@ class dem(object):
             #apply mask
             if apply_mask:
                 fpm=self.mask.ravel()[river]
-                river[~fpm]=self.nodata
+                river[~fpm]=self.info.nodata
                 
                 #only one nodata in between
-                nind=nonzero(river==self.nodata)[0]; dind=diff(nind); 
+                nind=nonzero(river==self.info.nodata)[0]; dind=diff(nind); 
                 fpd=nonzero(dind==1)[0]+1; nind=nind[fpd]
                 
                 fpn=ones(len(river)).astype('bool'); fpn[nind]=False;  
@@ -265,15 +286,15 @@ class dem(object):
             
         #exclude rivers with len<3
         self.rivers=self.rivers[inum]
-        if not hasattr(self,'info'): self.info=npz_data()
+        
+        #add river information to info
         self.info.rseg=seg0[inum]
         self.info.rind=sind0[inum]
-        
-    
+            
     def compute_boundary(self,seg=None,sind=None,acc_limit=None,level_max=100):
                         
         #pre-define variables
-        ds=self.ds; ym,xm=ds
+        ds=self.info.ds; ym,xm=ds
                
         #compute river mouths        
         if sind is not None:
@@ -302,7 +323,7 @@ class dem(object):
                 
         #---------------method 2-----------------------------------------------
         #find boundary pts        
-        fps=arange(len(sind)).astype('int'); seg=S.seg.ravel()[sind]
+        fps=arange(len(sind)).astype('int'); seg=self.seg.ravel()[sind]
         while len(fps)!=0:            
             #exclude pts already on domain bounday
             iy,ix=unravel_index(sind[fps],ds)
@@ -325,7 +346,6 @@ class dem(object):
         self.boundary=self.search_boundary(sind,level_max=level_max)  
         
         #add boundary info        
-        if not hasattr(self,'info'): self.info=npz_data()
         self.info.bseg=seg
     
     def compute_watershed(self):        
@@ -349,13 +369,13 @@ class dem(object):
                                 
     def compute_dir(self,data='dem',outname='dir',subdomain_size=1e5,zlimit=0,method=0):
         #when diff(dem)<zlimit, regard them the same elevation
-        #method=0: don't assign dir to flat cells; method=1: assign dir to flat cells
+        #method=0: don't assign dir to flat cells; 
+        #method=1: assign dir to flat cells
+        #method=2: don't compute dir on boundary
         
         #dem data
-        if type(data)==str: #assume data is dem
-            #pre_proc
-            self.remove_nan_nodata();    
-            if not hasattr(self,'ds'): self.ds=self.dem.shape
+        if type(data)==str: #assume data is dem  
+            # if not hasattr(self,'ds'): self.ds=self.dem.shape
             
             #change dem dimension
             self.dem=self.dem.ravel()
@@ -364,22 +384,23 @@ class dem(object):
             dem0=data.ravel()
             
         #pre-calculation                
-        ds=self.ds; ym,xm=ds; nsize=prod(ds); nlim=subdomain_size
-        dir=zeros(nsize).astype('int32'); nodata=self.nodata
+        ds=self.info.ds; ym,xm=ds; nsize=prod(ds); nlim=subdomain_size
+        dir=zeros(nsize).astype('int32'); nodata=self.info.nodata
         nsubdomain=int(max(round(nsize/nlim),1))
         
         #convert nan to nodata
-        if isnan(nodata):
-            nodata=-99999
-            fpn=isnan(dem0)
-            dem0[fpn]=nodata
+        self.remove_nan('dem')
             
         offsets_all=array([1,-xm,-1,xm, -xm+1,-xm-1,xm-1,xm+1])
         ndirs_all=array([1, 64, 16, 4, 128, 32, 8,  2])
         pdirs_all=array([16, 4,  1, 64, 8,   2, 128,32])
            
+        if method==2:
+            nloop=1
+        else:
+            nloop=3
         #calculate dir for each subdomain      
-        for it in arange(3):
+        for it in arange(nloop):
             if it==0: 
                 nsub=nsubdomain #for subdomain
             else:
@@ -393,6 +414,11 @@ class dem(object):
                         sind0=arange(i*nlim,nsize).astype('int')
                     else:
                         sind0=arange(i*nlim,(i+1)*nlim).astype('int')
+                    
+                    #exclude pts on boundary
+                    iy,ix=unravel_index(sind0,ds)
+                    fp=(ix>0)*(ix<(xm-1))*(iy>0)*(iy<(ym-1)); sind0=sind0[fp]
+                    
                     flag=arange(8)
                 elif it==1:
                     #get index for each side
@@ -465,21 +491,51 @@ class dem(object):
                     dir[sind[fpm]]=ndir[fpm]
         
         #convert nodata to nan
-        if isnan(self.nodata): dem0[fpn]=self.nodata
+        if isnan(self.info.nodata): dem0[fpn]=self.info.nodata
         if type(data)==str: self.dem=self.dem.reshape(ds) #assume data is dem
                                                         
         #reshape
         dir=dir.reshape(ds)
-        exec('self.{}=dir'.format(outname))        
+        exec('self.{}=dir'.format(outname)) 
+    
+    def change_bnd_dir(self):
+        #if dir on the boundary is outflow, then dir=0        
+        ym,xm=self.info.ds
         
-    def fill_depression(self,level_max=100):
+        #bnd info
+        sind_bnd=self.info.sind_bnd        
+        dir_bnd=self.dir.ravel()[sind_bnd]
+        
+        #dirs on four sides
+        dirs=[[32,64,128],[2,4,8],[8,16,32],[1,2,128]]
+        inds=[arange(1,xm-1),xm+arange(1,xm-1),2*xm+arange(0,ym-2),2*xm+(ym-2)+arange(0,ym-2)]
+        for i in arange(4):
+            diri=dir_bnd[inds[i]]
+            fpd=nonzero((diri==dirs[i][0])|(diri==dirs[i][1])|(diri==dirs[i][2]))[0]
+            self.dir.ravel()[sind_bnd[inds[i][fpd]]]=0
+            
+        #dirs on four corners
+        dirs=[[1,2,4],[4,8,16],[1,128,64],[16,32,64]]
+        inds=[0,xm-1,xm,2*xm-1]
+        for i in arange(4):
+            diri=dir_bnd[inds[i]]
+            if (diri!=dirs[i][0])*(diri!=dirs[i][1])*(diri!=dirs[i][2]):
+                self.dir.ravel()[sind_bnd[inds[i]]]=0        
+        
+    def fill_depression(self,level_max=100,method=0):
+        #method=0: resolve all flats 
+        #method=1: don't resolve flats on boundary (dir=0)
 
         #pre-define variables       
-        ds=self.ds; ym,xm=ds
+        ds=self.info.ds; ym,xm=ds
                 
         #resolve flats 
         print('---------resolve DEM flats------------------------------------')
         sind0=nonzero(self.dir.ravel()==0)[0]; 
+        if method==1:
+            iy,ix=unravel_index(sind0,ds)
+            fp=(ix>0)*(ix<(xm-1))*(iy>0)*(iy<(ym-1)); sind0=sind0[fp]
+        
         isum=self.search_upstream(sind0,ireturn=2)
         self.resolve_flat(sind0[isum==0])    
     
@@ -526,13 +582,13 @@ class dem(object):
                 sind_bnd_all.extend(sindi)        
                 ids_bnd.append(arange(id1,id2).astype('int')); id1=id1+len(sindi)                         
             sind_bnd_all=array(sind_bnd_all);ids_bnd=array(ids_bnd)
-            flag_bnd_all=S.search_flat(sind_bnd_all,ireturn=10)
+            flag_bnd_all=self.search_flat(sind_bnd_all,ireturn=10)
             for i in arange(slen):
                 self.boundary[i]=sind_bnd_all[ids_bnd[i][flag_bnd_all[ids_bnd[i]]]]
                 
             #recalcuate bnd for seg with false boundary
             len_seg=array([len(i) for i in sind_segs]); 
-            len_bnd=array([len(i) for i in S.boundary])
+            len_bnd=array([len(i) for i in self.boundary])
             idz=nonzero((len_bnd==0)*(len_seg!=0))[0]
             if len(idz)!=0:
                 #save boundary first
@@ -643,7 +699,176 @@ class dem(object):
             
             #update variables    
             sind0=sind0[ids_left]; seg0=seg0[ids_left]; h0=h0[ids_left]; ns0=ns0[ids_left]
-            self.boundary=S.boundary[ids_left]; sind_segs=sind_segs[ids_left]
+            self.boundary=self.boundary[ids_left]; sind_segs=sind_segs[ids_left]
+            slen=len(sind0); ids=arange(slen)
+        #clean
+        delattr(self,'seg');delattr(self,'boundary')
+        
+    def fill_depression_global(self,level_max=100):
+        #method=0: resolve depression without DEM data
+        
+        #pre-define variables       
+        ds=self.info.ds; ym,xm=ds
+                
+        print('---------fill depression in global domain-----------------------')
+              
+        #identify depression catchment
+        sind0=self.info.sind_bnd_local; iy,ix=unravel_index(sind0,ds)
+        fp=(iy>0)*(iy<(ym-1))*(ix>0)*(ix<(xm-1))*(self.dir.ravel()[sind0]==0); 
+        sind0=sind0[fp]; h0=self.info.dem_bnd_local[fp]
+        
+        #search and mark each depression
+        print('---------identify and mark depressions------------------------')
+        slen=len(sind0); seg0=arange(slen)+1; 
+        self.search_upstream(sind0,ireturn=3,seg=seg0,level_max=level_max)
+        
+        #get indices for each depression; here seg is numbering, not segment number
+        print('---------save all depression points---------------------------')
+        sind_segs=self.search_upstream(sind0,ireturn=9,seg=arange(slen),acc_calc=True,level_max=level_max)
+        ns0=array([len(i) for i in sind_segs])                  
+      
+        #get depression boundary
+        print('---------compute depression boundary--------------------------')
+        self.compute_boundary(sind=sind0); 
+            
+        #loop to reverse dir along streams
+        print('---------fill depressions-------------------------------------')
+        ids=arange(slen); iflag=0
+        while len(sind0)!=0:
+            iflag=iflag+1
+            print('fill depression: loop={}, ndep={}'.format(iflag,slen))
+            # slen=len(ids); h0=h00[ids]; sind0=sind00[ids]; ns0=ns00[ids]
+            # ids=arange(slen)
+            #-------------------------------------------------------------------------
+            #seg0,     ns0,     h0,      sind0,       sind_bnd,   h_bnd
+            #seg_min,  ns_min,  h0_min,  sind0_min,   sind_min,   h_min  h_bnd_min  dir_min
+            #-------------------------------------------------------------------------        
+            
+            #exclude nonboundary indices
+            sind_bnd_all=[]; ids_bnd=[]; id1=0; id2=0;  
+            for i in arange(len(sind0)):            
+                sindi=unique(self.boundary[i]); id2=id1+len(sindi)
+                sind_bnd_all.extend(sindi)        
+                ids_bnd.append(arange(id1,id2).astype('int')); id1=id1+len(sindi)                         
+            sind_bnd_all=array(sind_bnd_all);ids_bnd=array(ids_bnd)
+            flag_bnd_all=self.search_flat(sind_bnd_all,ireturn=10)
+            for i in arange(slen):
+                self.boundary[i]=sind_bnd_all[ids_bnd[i][flag_bnd_all[ids_bnd[i]]]]
+                
+            #recalcuate bnd for seg with false boundary
+            len_seg=array([len(i) for i in sind_segs]); 
+            len_bnd=array([len(i) for i in self.boundary])
+            idz=nonzero((len_bnd==0)*(len_seg!=0))[0]
+            if len(idz)!=0:
+                #save boundary first
+                boundary=self.boundary.copy(); delattr(self,'boundary')
+                self.compute_boundary(sind=sind0[idz]);
+                boundary[idz]=self.boundary
+                self.boundary=boundary; boundary=None
+                                        
+            #rearange the boundary index
+            sind_bnd_all=[]; ids_bnd=[]; id1=0; id2=0;  
+            for i in arange(len(sind0)):            
+                sindi=self.boundary[i]; id2=id1+len(sindi)
+                sind_bnd_all.extend(sindi)        
+                ids_bnd.append(arange(id1,id2).astype('int')); id1=id1+len(sindi)             
+            sind_bnd_all=array(sind_bnd_all);ids_bnd=array(ids_bnd);
+            
+            #find all the neighboring indices with minimum depth
+            sind_min_all,h_min_all,dir_min_all=self.search_flat(sind_bnd_all,ireturn=8)
+                    
+            #minimum for each seg
+            h_min=array([h_min_all[id].min() for id in ids_bnd])
+            mind=array([nonzero(h_min_all[id]==hi)[0][0] for id,hi in zip(ids_bnd,h_min)])        
+            sind_bnd=array([sind_bnd_all[id][mi] for id,mi in zip(ids_bnd,mind)]); h_bnd=self.dem.ravel()[sind_bnd]
+            sind_min=array([sind_min_all[id][mi] for id,mi in zip(ids_bnd,mind)])
+            dir_min=array([dir_min_all[id][mi] for id,mi in zip(ids_bnd,mind)])
+            
+            #get s0_min,h0_min,sind0_min
+            seg_min=self.seg.ravel()[sind_min]; fps=nonzero(seg_min!=0)[0]; 
+                    
+            ind_sort=argsort(seg_min[fps]);  
+            seg_1, ind_unique=unique(seg_min[fps[ind_sort]],return_inverse=True)
+            seg_2,iA,iB=intersect1d(seg_1,seg0,return_indices=True)        
+            ids_min=zeros(slen).astype('int'); ids_min[fps[ind_sort]]=ids[iB][ind_unique]
+            
+            ns_min=zeros(slen).astype('int');    ns_min[fps]=ns0[ids_min[fps]]
+            h0_min=-1e5*ones(slen);              h0_min[fps]=h0[ids_min[fps]]
+            sind0_min=-ones(slen).astype('int'); sind0_min[fps]=sind0[ids_min[fps]]
+            h_bnd_min=zeros(slen);               h_bnd_min[fps]=h_bnd[ids_min[fps]]
+        
+            #get stream from head to catchment
+            fp1=seg_min==0; 
+            fp2=(seg_min!=0)*(h0_min<h0); 
+            fp3=(seg_min!=0)*(h0_min==h0)*(ns_min>ns0)
+            fp4=(seg_min!=0)*(h0_min==h0)*(ns_min==ns0)*(h_bnd>h_bnd_min); 
+            fp5=(seg_min!=0)*(h0_min==h0)*(ns_min==ns0)*(h_bnd==h_bnd_min)*(sind0>sind0_min);         
+            fph=nonzero(fp1|fp2|fp3|fp4|fp5)[0]; sind_head=sind_bnd[fph]; 
+            sind_streams=self.search_downstream(sind_head,ireturn=2,msg=False)        
+                    
+            #get all stream index and its dir
+            t0=time.time(); sind=[]; dir=[];
+            for i in arange(len(fph)):
+                id=fph[i];    
+                #S.seg.ravel()[sind_segs[id]]=seg_min[id]; seg0[id]=seg_min[id]
+                sind_stream=sind_streams[i][:-1]
+                dir_stream=r_[dir_min[id],self.dir.ravel()[sind_stream][:-1]]            
+                sind.extend(sind_stream); dir.extend(dir_stream)
+            sind=array(sind); dir0=array(dir).copy(); dir=zeros(len(dir0)).astype('int')
+                
+            #reverse dir
+            dir_0=[128,64,32,16,8,4,2,1]; dir_inv=[8,4,2,1,128,64,32,16]
+            for i in arange(8):
+                fpr=dir0==dir_0[i]; dir[fpr]=dir_inv[i]
+            dt=time.time()-t0
+            self.dir.ravel()[sind]=dir;
+            
+            #----build the linkage--------------------------------------------------
+            s_0=seg0.copy(); d_0=seg_min.copy(); d_0[setdiff1d(arange(slen),fph)]=-1
+            while True:         
+                fpz=nonzero((d_0!=0)*(d_0!=-1))[0] 
+                if len(fpz)==0: break         
+            
+                #assign new value of d_0
+                s1=d_0[fpz].copy(); 
+                            
+                ind_sort=argsort(s1); 
+                s2,ind_unique=unique(s1[ind_sort],return_inverse=True)
+                s3,iA,iB=intersect1d(s2,s_0,return_indices=True)            
+                d_0[fpz[ind_sort]]=d_0[iB[ind_unique]]
+                
+                #assign new value fo s_0
+                s_0[fpz]=s1;
+            
+            #--------------------------
+            seg_stream=seg0[fph[d_0[fph]==-1]] #seg that flows to another seg (!=0)        
+            seg_tmp,iA,sid=intersect1d(seg_stream,seg0,return_indices=True)
+            
+            seg_target=s_0[fph[d_0[fph]==-1]]; tid=zeros(len(seg_target)).astype('int'); 
+            ind_sort=argsort(seg_target); seg_tmp, ind_unique=unique(seg_target[ind_sort],return_inverse=True)
+            seg_tmp,iA,iB=intersect1d(seg_target,seg0,return_indices=True);
+            tid[ind_sort]=iB[ind_unique]
+            #----------------------------------------------------------------------
+                        
+            #reset variables-----
+            ids_stream=ids[fph]; ids_left=setdiff1d(ids,ids_stream)        
+    
+            #collect boundary        
+            for si,ti in zip(sid,tid):                        
+                self.seg.ravel()[sind_segs[si]]=seg0[ti]
+                self.boundary[ti]=r_[self.boundary[ti],self.boundary[si]]
+                sind_segs[ti]=r_[sind_segs[ti],sind_segs[si]]
+                ns0[ti]=ns0[ti]+ns0[si]
+                   
+            #set other seg number to zeros
+            seg_stream2=seg0[fph[d_0[fph]==0]] #seg that flows to another seg (!=0)        
+            seg_tmp,iA,sid2=intersect1d(seg_stream2,seg0,return_indices=True)
+            for si in sid2:
+                self.seg.ravel()[sind_segs[si]]=0
+            
+            #update variables    
+            sind0=sind0[ids_left]; seg0=seg0[ids_left]; h0=h0[ids_left]; ns0=ns0[ids_left]
+            self.boundary=self.boundary[ids_left]; sind_segs=sind_segs[ids_left]
             slen=len(sind0); ids=arange(slen)
         #clean
         delattr(self,'seg');delattr(self,'boundary')
@@ -654,7 +879,7 @@ class dem(object):
         #Raster Digital Elevation Models". Computers & Geosciences. doi:10.1016/j.cageo.2013.01.009"
         
         #pre-define variables
-        ds=self.ds; ym,xm=ds; nsize=ym*xm
+        ds=self.info.ds; ym,xm=ds; nsize=ym*xm
         
         #find indices with (dir==0)
         if sind0 is None:
@@ -698,10 +923,10 @@ class dem(object):
         #ireturn=7: return neighboring indices in seg==0 & with minimum depth.
         #ireturn=8: return neighboring indices in neighboring seg & with minimum depth &dir.
         #ireturn=9: assign dir for sind_flat based on dem_flat
-        #ireturn=10: exclude non-boundary index
+        #ireturn=10: exclude non-seg-boundary index
         
         #pre-define variables
-        slen=len(sind0); ds=self.ds; ym,xm=ds; nsize=ym*xm
+        slen=len(sind0); ds=self.info.ds; ym,xm=ds; nsize=ym*xm
         dem0=self.dem.ravel()[sind0]
         
         #convert index
@@ -719,7 +944,7 @@ class dem(object):
         
         if ireturn==6:
             #get neighboring minimum dem and indices
-            fp=dem_true==self.nodata;  dem_true[fp]=1e5
+            fp=dem_true==self.info.nodata;  dem_true[fp]=1e5
             dem=ones([8,slen])*1e5; dem.ravel()[fpt]=dem_true            
             iy_min=argmin(dem,axis=0); dem_min=dem[iy_min,arange(slen)]            
             
@@ -730,7 +955,7 @@ class dem(object):
             
         if ireturn==7:
             #get neighboring minimum dem and indices in seg=0
-            fp=(self.seg.ravel()[sind_true]!=0)|(dem_true==self.nodata); dem_true[fp]=1e5;
+            fp=(self.seg.ravel()[sind_true]!=0)|(dem_true==self.info.nodata); dem_true[fp]=1e5;
             dem=ones([8,slen])*1e5; dem.ravel()[fpt]=dem_true
             
             sind=zeros([8,slen]).astype('int'); sind.ravel()[fpt]=sind_true
@@ -742,7 +967,7 @@ class dem(object):
             #get neighboring minimum dem and indices in seg=0           
             dir=tile(array([16,4,1,64,8,2,128,32]),slen).reshape([slen,8]).T            
             seg_true=self.seg.ravel()[sind_true]; seg0=self.seg.ravel()[sind0]
-            fp=(seg_true==tile(seg0,8)[fpt])|(dem_true==self.nodata); dem_true[fp]=1e5;
+            fp=(seg_true==tile(seg0,8)[fpt])|(dem_true==self.info.nodata); dem_true[fp]=1e5;
             dem=ones([8,slen])*1e5; dem.ravel()[fpt]=dem_true
             
             sind=zeros([8,slen]).astype('int'); sind.ravel()[fpt]=sind_true
@@ -888,7 +1113,7 @@ class dem(object):
         #search pts of boundary pts of watershed segment, sind0 are the initial index of segments
         
         #pre-defind variables
-        slen=len(sind0); ds=self.ds
+        slen=len(sind0); ds=self.info.ds
         # print(sind0)
         iy0,ix0=unravel_index(sind0,ds)
         seg0=self.seg.ravel()[sind0]
@@ -993,7 +1218,7 @@ class dem(object):
         #ireturn=9: return segment boundary indices
              
         #--pre-define variables        
-        slen=len(sind0); ds=self.ds
+        slen=len(sind0); ds=self.info.ds
         dir_in0=[8,4,2,1,128,64,32,16]
         
         #convert index
@@ -1236,7 +1461,7 @@ class dem(object):
         #ireturn=2: save all the index along the downstream
         
         #pre-define variables
-        slen=len(sind0); ds=self.ds
+        slen=len(sind0); ds=self.info.ds
         
         #variables for each direction
         dir_out=array([128,64,32,16,8,4,2,1]).astype('int')
@@ -1310,25 +1535,28 @@ class dem(object):
                         #continue search the rest pts 
                         self.search_downstream(sind_next[fpz],ireturn=ireturn,wlevel=1,level=level+1,level_max=level_max)                              
             
-    def compute_extent(self):
-        #recalculate extent from affine        
-        ym,xm=self.ds; dxy=self.affine[0]; ly0=self.affine[5]; lx0=self.affine[2]        
-        self.extent=array([lx0,lx0+(xm-1)*dxy,ly0-(ym-1)*dxy,ly0])
+    def compute_extent(self,header=None):
+        #recalculate extent from header
+        if header is None: header=self.info.header
+        ym,xm,yll,xll,dxy=header        
+        extent=array([xll,xll+(xm-1)*dxy,yll,yll+(ym-1)*dxy])
+        return extent
         
-    def remove_nan_nodata(self,nodata=-99999):
-        fpn=isnan(self.dem)
+    def remove_nan(self,name='dem',nodata=-99999):
+        #change nan to nodata                
+        fpn=isnan(self.dem)|(self.dem==self.info.nodata)
         self.dem[fpn]=nodata
-        self.nodata=nodata
+        self.info.nodata=nodata
     
-    def get_coordinates(self,sind0,affine=None,ds=None,nodata=None):     
+    def get_coordinates(self,sind0,header=None,nodata=None):     
         #example: sind0=nonzero(self.dir.ravel()==0)[0], or sind0=nonzero(self.dir==0)
         
-        sind=sind0.copy()
         #check parameters first
-        if ds is None: ds=self.ds
-        if affine is None: affine=self.affine
-        if nodata is None: nodata=self.nodata
+        if header is None: header=self.info.header
+        if nodata is None: nodata=self.info.nodata
+        ym,xm,yll,xll,dxy=header; ds=[ym,xm]
         
+        sind=sind0.copy().ravel(); 
         #check index
         if len(sind)==2 and hasattr(sind[0],'__len__'):            
             indy,indx=sind  #sind0=[indy,indx]            
@@ -1338,13 +1566,13 @@ class dem(object):
             indy,indx=unravel_index(sind,ds)
             indy[fpn]=nodata; indx[fpn]=nodata
             
-        #convert index to coordinates
-        dxy=affine[0]; ly0=affine[5]; lx0=affine[2]
+        #convert index to coordinates            
+        xi=xll+indx*dxy; xi[fpn]=nodata
+        yi=yll+(ym-indy-1)*dxy; yi[fpn]=nodata
         
-        xi=indx*dxy+lx0
-        yi=-indy*dxy+ly0
-        
-        xi[fpn]=nodata; yi[fpn]=nodata
+        #reshape
+        xi=reshape(xi,sind0.shape)
+        yi=reshape(yi,sind0.shape)        
         
         return yi,xi
     
@@ -1372,115 +1600,240 @@ class dem(object):
         S.xy=[];
         for i in arange(len(S.data)):            
             yi,xi=self.get_coordinates(S.data[i])
-            fp=(xi==self.nodata)|(yi==self.nodata);
+            fp=(xi==self.info.nodata)|(yi==self.info.nodata);
             xi[fp]=nan; yi[fp]=nan;            
             S.xy.append(c_[xi,yi])
         S.xy=array(S.xy)
         
         #write shapefile
         write_shapefile_data(sname,S)
-        
-class dem_data(dem):
-    def __init__(self):
-        pass       
-
-    def read_dem(self,name,outname='deminfo',subdomain_size=5e6,offset=0):
-        
-        #init
-        self.deminfo=npz_data()
-        
-        #read header
-        self.read_dem_header(name,subdomain_size=subdomain_size,offset=offset)
-        
-        
-               
-    def read_dem_header(self,name,subdomain_size=5e6,offset=0):
-        #read header info
-        #work for *asc at present
-        
-        #read header
-        if name.endswith('.asc'):
-            with open(name,'r') as fid:
-                xm=int(fid.readline().split()[1])
-                ym=int(fid.readline().split()[1])
-                xll=float(fid.readline().split()[1])
-                yll=float(fid.readline().split()[1])
-                dxy=float(fid.readline().split()[1])
-                nval=fid.readline().split()[1]
-                if nval.lower() in ('nan','-nan'):
-                    nodata=nan
-                else:
-                    nodata=float(nval)
-                
-        #process info
-        nsize=ym*xm; 
-        self.deminfo.header=[ym,xm,yll,xll,dxy,nodata]
-        self.deminfo.ds=[ym,xm]; 
-        self.deminfo.shape=[ym,xm]; 
-        self.deminfo.extent=(xll,xll+(xm-1)*dxy,yll,yll+(ym-1)*dxy)                   
-        self.deminfo.skiprows=6
-        self.max_rows=ym
-        
-        #divide the domain into subdomains       
-        nsub=max(around(nsize/subdomain_size),1);         
-        nx=max(int(round(sqrt(nsub))),1); ny=max(int(nsub/nx),1);
-        dy0=int(floor(ym/ny)); dx0=int(floor(xm/nx))        
-        
-        self.deminfo.nsubdomain=nx*ny; self.deminfo.subdomain_shape=[dy0,dx0]
-        self.domains=[]
-
-        #calcuate subdomain info        
-        for i in arange(ny):
-            dy00=dy0
-            #subdomain index
-            if ny==1:
-                iy=0; dy=dy0; ylli=yll; indy=[0,dy]; 
-            else:
-                if i==0:
-                    iy=0;  dy=dy0+offset;  ylli=yll; indy=[0,dy-offset];
-                elif i==(ny-1):
-                    iy=i*dy0-offset;  dy=ym-iy;  ylli=yll+iy*dxy;  indy=[offset,dy]; dy00=dy-offset
-                else:
-                    iy=i*dy0-offset;  dy=dy0+2*offset;  ylli=yll+iy*dxy; indy=[offset,dy-offset];
-            
-            dx00=dx0
-            for k in arange(nx):                                
-                #subdomain index
-                if nx==1:
-                    ix=0;  dx=dx0;  xlli=xll; indx=[0,dx]                               
-                else:
-                    if k==0:
-                        ix=0;  dx=dx0+offset;  xlli=xll; indx=[0,dx-offset]
-                    elif k==(nx-1):
-                        ix=k*dx0-offset; dx=xm-ix;  xlli=xll+ix*dxy; indx=[offset,dx]; dx00=dx-offset
-                    else:
-                        ix=k*dx0-offset; dx=dx0+2*offset;  xlli=xll+ix*dxy; indx=[offset,dx-offset]    
-                
-                #save subdomain info
-                sinfo=npz_data();                         
-                sinfo.header=(dy,dx,ylli,xlli,dxy,nodata)
-                sinfo.ds=(dy,dx)
-                sinfo.shape=(dy00,dx00)
-                sinfo.extent=(xlli,xlli+(dx-1)*dxy,ylli,ylli+(dy-1)*dxy)                                
-                sinfo.skiprows=6+iy
-                sinfo.usecols=range(ix,ix+dx)
-                sinfo.max_rows=dy
-                sinfo.ind_extract=[*indy,*indx]    #extract data from subdomain
-                sinfo.ind_read=[iy,iy+dy,ix,ix+dx] #extract data for subdomain
-                sinfo.nsubdomain=0
-        
-                sdata=dem(); sdata.deminfo=sinfo
-                self.domains.append(sdata)    
-        self.domains=array(self.domains)
-         
+                 
 if __name__=="__main__":    
     close('all')
-
-#------read dem---------------------------------------------------------------
-    S=dem_data(); 
-    #S.read_dem('tmp.asc')
-    S.read_dem('GEBCO.asc',outname='S1',subdomain_size=1e5,offset=100)
+    
+    S=dem(); S.read_data('S1_m.npz')
+    S0=dem(); S0.read_data('S1_m.npz'); S0.compute_watershed()
+#--------------fill depression in global--------------------------------------
+    #pre-define variables       
+    ds=S.info.ds; ym,xm=ds; level_max=100
+            
+    print('---------fill depression in global domain-----------------------')
+          
+    #identify depression catchment
+    sind0=S.info.sind_bnd_local; iy,ix=unravel_index(sind0,ds)
+    fp=(iy>0)*(iy<(ym-1))*(ix>0)*(ix<(xm-1))*(S.dir.ravel()[sind0]==0); 
+    sind0=sind0[fp]; h0=S.info.dem_bnd_local[fp]
+    
+    #search and mark each depression
+    print('---------identify and mark depressions------------------------')
+    slen=len(sind0); seg0=arange(slen)+1; 
+    S.search_upstream(sind0,ireturn=3,seg=seg0,level_max=level_max)
+    
+    #get indices for each depression; here seg is numbering, not segment number
+    print('---------save all depression points---------------------------')
+    sind_segs=S.search_upstream(sind0,ireturn=9,seg=arange(slen),acc_calc=True,level_max=level_max)
+    ns0=array([len(i) for i in sind_segs])                  
+  
+    #get depression boundary
+    print('---------compute depression boundary--------------------------')
+    S.compute_boundary(sind=sind0); 
         
+    #loop to reverse dir along streams
+    print('---------fill depressions-------------------------------------')
+    ids=arange(slen); iflag=0
+    while len(sind0)!=0:
+        iflag=iflag+1
+        print('fill depression: loop={}, ndep={}'.format(iflag,slen))
+        # slen=len(ids); h0=h00[ids]; sind0=sind00[ids]; ns0=ns00[ids]
+        # ids=arange(slen)
+        #-------------------------------------------------------------------------
+        #seg0,     ns0,     h0,      sind0,       sind_bnd,   h_bnd
+        #seg_min,  ns_min,  h0_min,  sind0_min,   sind_min,   h_min  h_bnd_min  dir_min
+        #-------------------------------------------------------------------------        
+        
+        #exclude nonboundary indices
+        sind_bnd_all=[]; ids_bnd=[]; id1=0; id2=0;  
+        for i in arange(len(sind0)):            
+            sindi=unique(self.boundary[i]); id2=id1+len(sindi)
+            sind_bnd_all.extend(sindi)        
+            ids_bnd.append(arange(id1,id2).astype('int')); id1=id1+len(sindi)                         
+        sind_bnd_all=array(sind_bnd_all);ids_bnd=array(ids_bnd)
+        flag_bnd_all=self.search_flat(sind_bnd_all,ireturn=10)
+        for i in arange(slen):
+            self.boundary[i]=sind_bnd_all[ids_bnd[i][flag_bnd_all[ids_bnd[i]]]]
+            
+        #recalcuate bnd for seg with false boundary
+        len_seg=array([len(i) for i in sind_segs]); 
+        len_bnd=array([len(i) for i in self.boundary])
+        idz=nonzero((len_bnd==0)*(len_seg!=0))[0]
+        if len(idz)!=0:
+            #save boundary first
+            boundary=self.boundary.copy(); delattr(self,'boundary')
+            self.compute_boundary(sind=sind0[idz]);
+            boundary[idz]=self.boundary
+            self.boundary=boundary; boundary=None
+                                    
+        #rearange the boundary index
+        sind_bnd_all=[]; ids_bnd=[]; id1=0; id2=0;  
+        for i in arange(len(sind0)):            
+            sindi=self.boundary[i]; id2=id1+len(sindi)
+            sind_bnd_all.extend(sindi)        
+            ids_bnd.append(arange(id1,id2).astype('int')); id1=id1+len(sindi)             
+        sind_bnd_all=array(sind_bnd_all);ids_bnd=array(ids_bnd);
+        
+        #find all the neighboring indices with minimum depth
+        sind_min_all,h_min_all,dir_min_all=self.search_flat(sind_bnd_all,ireturn=8)
+                
+        #minimum for each seg
+        h_min=array([h_min_all[id].min() for id in ids_bnd])
+        mind=array([nonzero(h_min_all[id]==hi)[0][0] for id,hi in zip(ids_bnd,h_min)])        
+        sind_bnd=array([sind_bnd_all[id][mi] for id,mi in zip(ids_bnd,mind)]); h_bnd=self.dem.ravel()[sind_bnd]
+        sind_min=array([sind_min_all[id][mi] for id,mi in zip(ids_bnd,mind)])
+        dir_min=array([dir_min_all[id][mi] for id,mi in zip(ids_bnd,mind)])
+        
+        #get s0_min,h0_min,sind0_min
+        seg_min=self.seg.ravel()[sind_min]; fps=nonzero(seg_min!=0)[0]; 
+                
+        ind_sort=argsort(seg_min[fps]);  
+        seg_1, ind_unique=unique(seg_min[fps[ind_sort]],return_inverse=True)
+        seg_2,iA,iB=intersect1d(seg_1,seg0,return_indices=True)        
+        ids_min=zeros(slen).astype('int'); ids_min[fps[ind_sort]]=ids[iB][ind_unique]
+        
+        ns_min=zeros(slen).astype('int');    ns_min[fps]=ns0[ids_min[fps]]
+        h0_min=-1e5*ones(slen);              h0_min[fps]=h0[ids_min[fps]]
+        sind0_min=-ones(slen).astype('int'); sind0_min[fps]=sind0[ids_min[fps]]
+        h_bnd_min=zeros(slen);               h_bnd_min[fps]=h_bnd[ids_min[fps]]
+    
+        #get stream from head to catchment
+        fp1=seg_min==0; 
+        fp2=(seg_min!=0)*(h0_min<h0); 
+        fp3=(seg_min!=0)*(h0_min==h0)*(ns_min>ns0)
+        fp4=(seg_min!=0)*(h0_min==h0)*(ns_min==ns0)*(h_bnd>h_bnd_min); 
+        fp5=(seg_min!=0)*(h0_min==h0)*(ns_min==ns0)*(h_bnd==h_bnd_min)*(sind0>sind0_min);         
+        fph=nonzero(fp1|fp2|fp3|fp4|fp5)[0]; sind_head=sind_bnd[fph]; 
+        sind_streams=self.search_downstream(sind_head,ireturn=2,msg=False)        
+                
+        #get all stream index and its dir
+        t0=time.time(); sind=[]; dir=[];
+        for i in arange(len(fph)):
+            id=fph[i];    
+            #S.seg.ravel()[sind_segs[id]]=seg_min[id]; seg0[id]=seg_min[id]
+            sind_stream=sind_streams[i][:-1]
+            dir_stream=r_[dir_min[id],self.dir.ravel()[sind_stream][:-1]]            
+            sind.extend(sind_stream); dir.extend(dir_stream)
+        sind=array(sind); dir0=array(dir).copy(); dir=zeros(len(dir0)).astype('int')
+            
+        #reverse dir
+        dir_0=[128,64,32,16,8,4,2,1]; dir_inv=[8,4,2,1,128,64,32,16]
+        for i in arange(8):
+            fpr=dir0==dir_0[i]; dir[fpr]=dir_inv[i]
+        dt=time.time()-t0
+        self.dir.ravel()[sind]=dir;
+        
+        #----build the linkage--------------------------------------------------
+        s_0=seg0.copy(); d_0=seg_min.copy(); d_0[setdiff1d(arange(slen),fph)]=-1
+        while True:         
+            fpz=nonzero((d_0!=0)*(d_0!=-1))[0] 
+            if len(fpz)==0: break         
+        
+            #assign new value of d_0
+            s1=d_0[fpz].copy(); 
+                        
+            ind_sort=argsort(s1); 
+            s2,ind_unique=unique(s1[ind_sort],return_inverse=True)
+            s3,iA,iB=intersect1d(s2,s_0,return_indices=True)            
+            d_0[fpz[ind_sort]]=d_0[iB[ind_unique]]
+            
+            #assign new value fo s_0
+            s_0[fpz]=s1;
+        
+        #--------------------------
+        seg_stream=seg0[fph[d_0[fph]==-1]] #seg that flows to another seg (!=0)        
+        seg_tmp,iA,sid=intersect1d(seg_stream,seg0,return_indices=True)
+        
+        seg_target=s_0[fph[d_0[fph]==-1]]; tid=zeros(len(seg_target)).astype('int'); 
+        ind_sort=argsort(seg_target); seg_tmp, ind_unique=unique(seg_target[ind_sort],return_inverse=True)
+        seg_tmp,iA,iB=intersect1d(seg_target,seg0,return_indices=True);
+        tid[ind_sort]=iB[ind_unique]
+        #----------------------------------------------------------------------
+                    
+        #reset variables-----
+        ids_stream=ids[fph]; ids_left=setdiff1d(ids,ids_stream)        
+
+        #collect boundary        
+        for si,ti in zip(sid,tid):                        
+            self.seg.ravel()[sind_segs[si]]=seg0[ti]
+            self.boundary[ti]=r_[self.boundary[ti],self.boundary[si]]
+            sind_segs[ti]=r_[sind_segs[ti],sind_segs[si]]
+            ns0[ti]=ns0[ti]+ns0[si]
+               
+        #set other seg number to zeros
+        seg_stream2=seg0[fph[d_0[fph]==0]] #seg that flows to another seg (!=0)        
+        seg_tmp,iA,sid2=intersect1d(seg_stream2,seg0,return_indices=True)
+        for si in sid2:
+            self.seg.ravel()[sind_segs[si]]=0
+        
+        #update variables    
+        sind0=sind0[ids_left]; seg0=seg0[ids_left]; h0=h0[ids_left]; ns0=ns0[ids_left]
+        self.boundary=self.boundary[ids_left]; sind_segs=sind_segs[ids_left]
+        slen=len(sind0); ids=arange(slen)
+    #clean
+    delattr(self,'seg');delattr(self,'boundary')
+
+
+#------read dem----------------------------------------------------------------
+    
+    # acc_limit=1e3; seg=arange(1,1e5)
+    # S=dem(); 
+    
+    # # #--------------------------------------------------------------------------
+    # # S.read_deminfo('GEBCO.asc',subdomain_size=5e5,offset=10)
+    # # S.read_data('S1_DEM.npz')
+    
+    # # #compute dir on each subdomain
+    # # for i in arange(S.info.nsubdomain):
+    # #     print('--------------------------------------------------------------')
+    # #     print('---------work on subdomain {}----------------------------------'.format(i))
+    # #     print('--------------------------------------------------------------')
+    # #     Si=S.domains[i]; 
+    # #     Si.read_demdata(data=S.dem)    
+    # #     Si.compute_dir()
+        
+    # #     #if Si is a subdomain, save bnd info for collecting
+    # #     if S.info.nsubdomain>1:            
+    # #         Si.collapse_subdomain();    
+    # #         Si.change_bnd_dir()                 
+        
+    # #     #resolve flat and fill depression
+    # #     Si.fill_depression(level_max=100)
+    
+    # # #collect dir
+    # # S.collect_subdomain_data(name='dir',outname='dir')
+    
+    # # #deal with bndinfo
+    # # sind=S.info.sind_bnd_local; dem=S.info.dem_bnd_local; 
+    # # dir0=S.info.dir_bnd_local; dir=S.dir.ravel()[sind]
+    
+    # # #put flow into another seg if its original dir is not zero
+    # # fpz=nonzero((dir0!=0)*(dir==0))[0];  S.dir.ravel()[sind[fpz]]=dir0[fpz]
+         
+    # # #save info
+    # # S.save_data('S1_m',['dir','info'])
+    
+    # # #fill depression
+    # # delattr(S,'dem')
+        
+    # S.read_data('S1_m.npz')
+    # S.fill_depression_global(level_max=100)
+    
+    # #--------------------------------------------
+    # S.compute_watershed()
+    # S.compute_river(seg,acc_limit=acc_limit)
+    # S.write_shapefile('rivers','A1_1_rivers')
+    
+    # # dt=time.time()-t0
+    # # S.compute_boundary(seg,acc_limit=acc_limit)   
+    
 #------write shapefile---------------------------------------------------------
     # acc_limit=1e4; seg=arange(1,1e5)
     # S0=dem_dir(); S0.read_data('S1.npz')
@@ -1494,7 +1847,7 @@ if __name__=="__main__":
     # S.compute_river(seg,acc_limit=acc_limit)
     # S.write_shapefile('rivers','A0_rivers')
     # # S.compute_boundary(seg,acc_limit=acc_limit)            
-    # # S.write_shapefile('boundary','B_boundary')    
+    # # S.write_shapefile('boundary','B_boundary')    S
 
 #--------------------------precalculation--------------------------------------
     # # # # # # # # #--------------------------------------------------------------
