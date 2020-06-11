@@ -33,7 +33,7 @@ class dem(object):
     
     def read_demdata(self,outname='dem',data=None,save_bnd=True):   
         '''
-        read dem raw data from info.name or data
+        read dem raw data from info.name or data(global)
         also save values on subdomain boundary for later combination
         '''
 
@@ -41,28 +41,30 @@ class dem(object):
         #read data directly                
         if data is None:            
             if info.name.endswith('.asc'):
-                data=loadtxt(info.name,skiprows=info.skiprows,max_rows=info.max_rows,usecols=info.usecols)
-                exec('self.{}=data'.format(outname))
+                self.data=loadtxt(info.name,skiprows=info.skiprows,max_rows=info.max_rows,usecols=info.usecols)
+                self.__dict__[outname]=self.__dict__.pop('data')
         else:
-            #extract data        
-            rind=info.ind_read;        
-            exec('self.{}=data[{}:{},{}:{}].copy()'.format(outname,*info.ind_read))
-        
-        #save bnd values     
-        if hasattr(self,'dem'): 
-            self.info.dem_bnd=self.dem.ravel()[self.info.sind_bnd].copy()
-            
-            #update bnd info if there is nodata
-            fpn=self.info.dem_bnd!=self.info.nodata            
-            if self.info.is_subdomain: self.info.sind_bnd_global=self.info.sind_bnd_global[fpn]    
-            self.info.sind_bnd=self.info.sind_bnd[fpn].copy()            
-            self.info.dem_bnd=self.info.dem_bnd[fpn].copy()            
-        if hasattr(self,'dir'): self.info.dir_bnd=self.dir.ravel()[self.info.sind_bnd].copy()   
+            #extract data  
+            iy,ix=self.info.ixy_global; ym,xm=self.info.ds
+            eind=[iy,iy+ym,ix,ix+xm]              
+            exec('self.{}=data[{}:{},{}:{}].copy()'.format(outname,*eind))
         
         #convert nan to nodata
         self.remove_nan(outname)
         
-    def collect_subdomain_data(self,name='dem',outname='dem'):
+        #save bnd values     
+        if hasattr(self,'dem'): 
+            self.info.dem_bnd=self.dem.ravel()[self.info.sind_bnd].copy()
+            if hasattr(self,'dir'): self.info.dir_bnd=self.dir.ravel()[self.info.sind_bnd].copy()   
+            
+            #exclude nodata
+            fpn=self.info.dem_bnd!=self.info.nodata                        
+            self.info.sind_bnd=self.info.sind_bnd[fpn].copy()            
+            if hasattr(self,'dir'): self.info.dem_bnd=self.info.dem_bnd[fpn].copy()                        
+        
+
+        
+    def collect_subdomain_data(self,name='dem',outname='dem',collect_bndinfo=True):
         '''
         collect subdomain values to reconstruct global domain data
         name: attribute to be combined
@@ -71,23 +73,32 @@ class dem(object):
         
         #initialize
         exec('self.{}=ones(self.info.ds)*self.info.nodata'.format(outname))
-        
+                
         #colloect data and also bnd dir and dem
         sind_bnd_local=[]; dem_bnd_local=[]; dir_bnd_local=[]; sind_bnd_nodata=[]
         for i in arange(self.info.nsubdomain):
-            eind=self.domains[i].info.ind_extract
-            cind=self.info.ind_collect[i]
-            exec('self.{}[{}:{},{}:{}]=self.domains[{}].{}[{}:{},{}:{}]'.format(outname,*cind,i,name,*eind))
+            iy,ix=self.domains[i].info.ixy_global; ym,xm=self.domains[i].info.ds
+            eind=[iy,iy+ym,ix,ix+xm]            
+            exec('self.{}[{}:{},{}:{}]=self.domains[{}].{}'.format(outname,*eind,i,name))
             
             #bnd info
-            sind_bnd_local.extend(self.domains[i].info.sind_bnd_global)
-            sind_bnd_nodata.extend(self.domains[i].info.sind_bnd_nodata_global)
-            if hasattr(self.domains[i].info,'dir_bnd'): dir_bnd_local.extend(self.domains[i].info.dir_bnd)
-            if hasattr(self.domains[i].info,'dem_bnd'): dem_bnd_local.extend(self.domains[i].info.dem_bnd)
-        self.info.sind_bnd_local=array(sind_bnd_local)
-        self.info.dir_bnd_local=array(dir_bnd_local)
-        self.info.dem_bnd_local=array(dem_bnd_local)
-        self.info.sind_bnd_nodata=unique(r_[self.info.sind_bnd_nodata,sind_bnd_nodata])
+            if collect_bndinfo:
+                biy,bix=unravel_index(self.domains[i].info.sind_bnd, self.domains[i].info.ds)
+                sind_bnd=ravel_multi_index([biy+iy,bix+ix],self.info.ds)                
+                sind_bnd_local.extend(sind_bnd)                
+                if hasattr(self.domains[i].info,'dir_bnd'): dir_bnd_local.extend(self.domains[i].info.dir_bnd)
+                if hasattr(self.domains[i].info,'dem_bnd'): dem_bnd_local.extend(self.domains[i].info.dem_bnd)
+                if len(self.domains[i].info.sind_bnd_nodata)!=0:
+                    biy,bix=unravel_index(self.domains[i].info.sind_bnd_nodata, self.domains[i].info.ds)
+                    sind_bnd=ravel_multi_index([biy+iy,bix+ix],self.info.ds)                
+                    sind_bnd_nodata.extend(sind_bnd)                    
+        
+        #assign bnd value
+        if collect_bndinfo:
+            self.info.sind_bnd_local=array(sind_bnd_local)
+            self.info.dir_bnd_local=array(dir_bnd_local)
+            self.info.dem_bnd_local=array(dem_bnd_local)
+            self.info.sind_bnd_nodata=unique(r_[self.info.sind_bnd_nodata,sind_bnd_nodata])
     
     def collapse_subdomain(self,svars=['dem','dir']):
         '''
@@ -96,61 +107,77 @@ class dem(object):
         '''
         
         if not self.info.is_subdomain: return
+        
+        #information of subdomain
+        ym0,xm0=self.info.ds;     iy0,ix0=self.info.ixy_global
+        ym,xm=self.info.ds_local; iy,ix=self.info.ixy_local                        
+        yll,xll,dxy=self.info.header[2:].copy()
                 
-        #extract the domain data
-        eind=self.info.ind_extract
+        #extract the domain data        
         for svar in svars:
             if not hasattr(self,svar): continue
-            exec('self.{}=self.{}[{}:{},{}:{}].copy()'.format(svar,svar,*eind))
-        
-        #update other information of subdomain
-        iy1,iy2,ix1,ix2=eind; ym=iy2-iy1; xm=ix2-ix1
-        yll,xll,dxy=self.info.header[2:]
-        self.info.header=[ym,xm,yll-iy1*dxy,xll+ix1*dxy,dxy]
-        self.info.ds=[ym,xm]
-        self.info.extent=[xll+ix1*dxy,xll+(ix2-1)*dxy,yll-(iy2-1)*dxy,yll-iy1*dxy]
-        self.info.skiprows=self.info.skiprows+iy1
-        self.info.usecols=self.info.usecols[ix1:ix2]
+            exec('self.{}=self.{}[{}:{},{}:{}].copy()'.format(svar,svar,iy,iy+ym,ix,ix+xm))
+                
+        #update subdomain info
+        self.info.header=[ym,xm,yll-iy*dxy,xll+ix*dxy,dxy]
+        self.info.extent=[xll+ix*dxy,xll+ix*dxy+(xm-1)*dxy,yll-iy*dxy-(ym-1)*dxy,yll-iy*dxy]
+        self.info.ds=[ym,xm]        
+        self.info.skiprows=self.info.skiprows+iy
+        self.info.usecols=self.info.usecols[(ix0+ix):(ix0+ix+xm)]
         self.info.max_rows=ym
         
-        #local index
+        #relate to global domain
+        self.info.ixy_local=[0,0]
+        self.info.ds_lcoal=[ym,xm]
+        self.info.ixy_global=[iy0+iy,ix0+ix]
+        
+        #local boundary index
         biy=r_[zeros(xm),ones(xm)*(ym-1),arange(1,ym-1),arange(1,ym-1)].astype('int')
         bix=r_[arange(xm),arange(xm),zeros(ym-2),ones(ym-2)*(xm-1)].astype('int')
-        self.info.sind_bnd=ravel_multi_index([biy,bix],self.info.ds)
+        sind_bnd=ravel_multi_index([biy,bix],self.info.ds)        
+        if hasattr(self,'dem'): dem_bnd=self.dem.ravel()[sind_bnd].copy()
+        if hasattr(self,'dir'): dir_bnd=self.dir.ravel()[sind_bnd].copy()
                 
-        rind=self.info.ind_read;
-        self.info.ind_read=[rind[0]+iy1,rind[0]+iy1+ym,rind[2]+ix1,rind[2]+ix1+xm]
-        self.info.ind_extract=[0,ym,0,xm]   
-    
-        #global index
-        biy=biy+rind[0]+iy1; bix=bix+rind[2]+ix1
-        self.info.sind_bnd_global=ravel_multi_index([biy,bix],self.info.ds_global)
-        self.info.bxy_global[0]=self.info.bxy_global[0]+iy1
-        self.info.bxy_global[1]=self.info.bxy_global[1]+ix1
+        #if there were bnd inside new domain
+        if len(self.info.sind_bnd)!=0:
+            biy,bix=unravel_index(self.info.sind_bnd,[ym0,xm0])
+            fpb=nonzero((biy>iy)*(biy<(iy+ym-1))*(bix>ix)*(bix<(ix+xm-1)))[0]
+            if len(fpb)!=0:
+                sind_bnd0=unravel_index([biy[fpb]-iy,bix[fpb]-ix], self.info.ds)
+                sind_bnd=r_[sind_bnd,sind_bnd0]
+                if hasattr(self,'dem'): dem_bnd=r_[dem_bnd,self.info.dem_bnd[fpb]]
+                if hasattr(self,'dir'): dir_bnd=r_[dir_bnd,self.info.dir_bnd[fpb]]
+        self.info.sind_bnd=sind_bnd; self.info.dem_bnd=dem_bnd; self.info.dir_bnd=dir_bnd        
         
-        #bnd        
+        sind_bnd_nodata=array([]).astype('int')
+        #for sind_bnd_nodata
+        if len(self.info.sind_bnd_nodata)!=0:
+            biy,bix=unravel_index(self.info.sind_bnd_nodata,[ym0,xm0])
+            fpb=nonzero((biy>iy)*(biy<(iy+ym-1))*(bix>ix)*(bix<(ix+xm-1)))[0]
+            if len(fpb)!=0:
+                sind_bnd_nodata0=unravel_index([biy[fpb]-iy,bix[fpb]-ix], self.info.ds)
+                sind_bnd_nodata=r_[sind_bnd_nodata,sind_bnd_nodata0]
+        self.info.sind_bnd_nodata=sind_bnd_nodata
+                
+        #exclude nodata bnd     
         if hasattr(self,'dem'): 
-            self.info.dem_bnd=self.dem.ravel()[self.info.sind_bnd].copy()
-            
-            #update bnd info if there is nodata
-            fpn=self.info.dem_bnd!=self.info.nodata            
-            self.info.sind_bnd_global=self.info.sind_bnd_global[fpn]
+            fpn=self.info.dem_bnd!=self.info.nodata                                    
+            #update bnd info if there is nodata                        
             self.info.sind_bnd=self.info.sind_bnd[fpn].copy()            
             self.info.dem_bnd=self.info.dem_bnd[fpn].copy()            
-        if hasattr(self,'dir'): self.info.dir_bnd=self.dir.ravel()[self.info.sind_bnd].copy() 
-        
+            if hasattr(self,'dir'): self.info.dir_bnd=self.info.dir_bnd[fpn].copy()        
                
-    def save_bnd_value(self):
-        '''
-        save bnd values of dem and dir
-        '''
+    # def save_bnd_value(self):
+    #     '''
+    #     save bnd values of dem and dir
+    #     '''
         
-        if hasattr(self,'dem'): 
-            self.info.dem_bnd=self.dem.ravel()[self.info.sind_bnd].copy()
-            fpn=self.info.dem_bnd!=self.info.nodata
-            self.info.sind_bnd=self.info.sind_bnd[fpn].copy()
-            self.info.dem_bnd=self.info.dem_bnd[fpn].copy()            
-        if hasattr(self,'dir'): self.info.dir_bnd=self.dir.ravel()[self.info.sind_bnd].copy() 
+    #     if hasattr(self,'dem'): 
+    #         self.info.dem_bnd=self.dem.ravel()[self.info.sind_bnd].copy()
+    #         fpn=self.info.dem_bnd!=self.info.nodata
+    #         self.info.sind_bnd=self.info.sind_bnd[fpn].copy()
+    #         self.info.dem_bnd=self.info.dem_bnd[fpn].copy()            
+    #     if hasattr(self,'dir'): self.info.dir_bnd=self.dir.ravel()[self.info.sind_bnd].copy() 
                                                          
     def read_deminfo(self,name,subdomain_size=5e6,offset=0):
         '''
@@ -180,20 +207,13 @@ class dem(object):
         nsize=ym*xm; 
         self.info.name=name
         self.info.header=[ym,xm,yll,xll,dxy]
-        self.info.nodata=nodata
-        self.info.ds=[ym,xm]; 
-        # self.info.shape=[ym,xm]; 
         self.info.extent=[xll,xll+(xm-1)*dxy,yll-(ym-1)*dxy,yll]
+        self.info.nodata=nodata
+        self.info.ds=[ym,xm];      
         self.info.skiprows=6
         self.info.usecols=arange(xm).astype('int')
-        self.info.max_rows=ym        
-        self.info.ind_read=[0,ym,0,xm]
-        
-        biy=r_[zeros(xm),ones(xm)*(ym-1),arange(1,ym-1),arange(1,ym-1)].astype('int')
-        bix=r_[arange(xm),arange(xm),zeros(ym-2),ones(ym-2)*(xm-1)].astype('int')
-        self.info.sind_bnd=ravel_multi_index([biy,bix],self.info.ds)
-        self.info.sind_bnd_nodata=array([]).astype('int')
-        
+        self.info.max_rows=ym 
+                
         #divide the domain into subdomains       
         nsub=max(around(nsize/subdomain_size),1);         
         nx=max(int(round(sqrt(nsub))),1); ny=max(int(nsub/nx),1);
@@ -202,51 +222,57 @@ class dem(object):
         self.info.is_subdomain=False
         self.info.nsubdomain=nx*ny; 
         self.info.subdomain_shape=[ny,nx]
-        self.info.subdomain_size=[dy0,dx0]
-        self.info.ind_collect=[]
+        self.info.subdomain_size=[dy0,dx0]        
         self.domains=[]
+        
+        #boundary
+        biy=r_[zeros(xm),ones(xm)*(ym-1),arange(1,ym-1),arange(1,ym-1)].astype('int')
+        bix=r_[arange(xm),arange(xm),zeros(ym-2),ones(ym-2)*(xm-1)].astype('int')
+        self.info.sind_bnd=ravel_multi_index([biy,bix],self.info.ds)
+        self.info.sind_bnd_nodata=array([]).astype('int')
 
         #calcuate subdomain info        
-        for i in arange(ny):
-            dy00=dy0
+        for i in arange(ny):                        
             #subdomain index
             if ny==1:
-                iy=0; dy=dy0; ylli=yll; indy=[0,dy]; cindy=[0,dy0]
+                iy=0; dy=dy0; eiy=0; edy=dy0 #eiy,edy is local index and shape 
             else:
                 if i==0:
-                    iy=0;  dy=dy0+offset;  ylli=yll; indy=[0,dy-offset]; cindy=[0,dy0]
+                    iy=0;  dy=dy0+offset;  eiy=0; edy=dy0 
                 elif i==(ny-1):
-                    iy=i*dy0-offset;  dy=ym-iy;  ylli=yll-iy*dxy;  indy=[offset,dy]; dy00=dy-offset; cindy=[i*dy0,ym]
+                    iy=i*dy0-offset;  dy=ym-iy;  eiy=offset; edy=ym-i*dy0
                 else:
-                    iy=i*dy0-offset;  dy=dy0+2*offset;  ylli=yll-iy*dxy; indy=[offset,dy-offset]; cindy=[i*dy0,(i+1)*dy0]
+                    iy=i*dy0-offset;  dy=dy0+2*offset;   eiy=offset; edy=dy0 
             
-            dx00=dx0
             for k in arange(nx):                                
                 #subdomain index
                 if nx==1:
-                    ix=0;  dx=dx0;  xlli=xll; indx=[0,dx]; cindx=[0,dx0]
+                    ix=0;  dx=dx0;  eix=0; edx=dx0 #eiy,edy is local index and shape 
                 else:
                     if k==0:
-                        ix=0;  dx=dx0+offset;  xlli=xll; indx=[0,dx-offset]; cindx=[0,dx0]
+                        ix=0;  dx=dx0+offset;  eix=0; edx=dx0
                     elif k==(nx-1):
-                        ix=k*dx0-offset; dx=xm-ix;  xlli=xll+ix*dxy; indx=[offset,dx]; dx00=dx-offset; cindx=[k*dx0,xm]
+                        ix=k*dx0-offset; dx=xm-ix;  eix=offset; edx=xm-k*dx0
                     else:
-                        ix=k*dx0-offset; dx=dx0+2*offset;  xlli=xll+ix*dxy; indx=[offset,dx-offset]; cindx=[k*dx0,(k+1)*dx0]
+                        ix=k*dx0-offset; dx=dx0+2*offset; eix=offset; edx=dx0
                 
                 #save subdomain info
                 sinfo=npz_data();     
                 sinfo.name=name                    
-                sinfo.header=[dy,dx,ylli,xlli,dxy]
+                sinfo.header=[dy,dx,yll-iy*dxy,xll+ix*dxy,dxy]
+                sinfo.extent=[xll+ix*dxy,xll+ix*dxy+(dx-1)*dxy,yll-iy*dxy-(dy-1)*dxy,yll-iy*dxy]                
                 sinfo.nodata=nodata
-                sinfo.ds=[dy,dx]
-                sinfo.ds_global=[ym,xm]
-                sinfo.bxy_global=[iy,ix]
-                # sinfo.shape=[dy00,dx00]
-                sinfo.extent=[xlli,xlli+(dx-1)*dxy,ylli-(dy-1)*dxy,ylli]
+                sinfo.ds=[dy,dx]                
                 sinfo.skiprows=6+iy
                 sinfo.usecols=arange(ix,ix+dx).astype('int')
                 sinfo.max_rows=dy
-                sinfo.is_subdomain=True
+                                
+                #go global
+                sinfo.is_subdomain=True                
+                sinfo.ixy_local=[eiy,eix]
+                sinfo.ds_local=[edy,edx]
+                sinfo.ixy_global=[iy,ix]
+                sinfo.ds_global=[ym,xm]
                 
                 #local boundary index
                 biy=r_[zeros(dx),ones(dx)*(dy-1),arange(1,dy-1),arange(1,dy-1)].astype('int')
@@ -254,19 +280,10 @@ class dem(object):
                 sinfo.sind_bnd=ravel_multi_index([biy,bix],sinfo.ds)
                 sinfo.sind_bnd_nodata=array([]).astype('int')
                 
-                #global boundary index
-                biy=biy+iy; bix=bix+ix;
-                sinfo.sind_bnd_global=ravel_multi_index([biy,bix],[ym,xm])
-                sinfo.sind_bnd_nodata_global=array([]).astype('int')
-                
-                sinfo.ind_read=[iy,iy+dy,ix,ix+dx] #index in domain: extract domain data for subdomain
-                sinfo.ind_extract=[*indy,*indx]    #index in subdomain: extract subdomain data to constrcut domain data   
-                ind_collect=[*cindy,*cindx]        #index in domain: extract subdomain data to constrcut domain data   
-                sinfo.nsubdomain=0
-                
+                #save info                                
                 sdata=dem(); sdata.info=sinfo
-                self.domains.append(sdata)   
-                self.info.ind_collect.append(ind_collect)
+                self.domains.append(sdata) 
+                
         
     def compute_river(self,seg=None,sind=None,acc_limit=1e4,nodata=None,apply_mask=False):   
         '''
@@ -741,15 +758,8 @@ class dem(object):
                 self.info.sind_bnd=r_[self.info.sind_bnd,sind0]                
                 self.info.sind_bnd_nodata=r_[self.info.sind_bnd_nodata, sind0]
                 if hasattr(self.info,'dir_bnd'): self.info.dir_bnd=r_[self.info.dir_bnd,self.dir.ravel()[sind0]]
-                if hasattr(self.info,'dem_bnd'): self.info.dem_bnd=r_[self.info.dem_bnd,self.dem.ravel()[sind0]]  
-                #global
-                if self.info.is_subdomain:
-                    biy,bix=unravel_index(sind0,ds); biy=biy+self.info.bxy_global[0]; bix=bix+self.info.bxy_global[1]; 
-                    sind_bnd_global=ravel_multi_index([biy,bix],self.info.ds_global)
-                    self.info.sind_bnd_global=r_[self.info.sind_bnd_global, sind_bnd_global]
-                    self.info.sind_bnd_nodata=r_[self.info.sind_bnd_nodata, sind_bnd_global]
-                    self.info.sind_bnd_nodata_global=r_[self.info.sind_bnd_nodata_global, sind_bnd_global]                
-                break            
+                if hasattr(self.info,'dem_bnd'): self.info.dem_bnd=r_[self.info.dem_bnd,self.dem.ravel()[sind0]] 
+                break
             sind_streams=self.search_downstream(sind_head,ireturn=2,msg=False)        
                     
             #get all stream index and its dir
@@ -862,8 +872,8 @@ class dem(object):
         sind_min=unique(array([sind_all[id[nonzero(dem_all[id]==min(dem_all[id]))[0]]] for id in ids]))
         self.dir.ravel()[sind_min]=0
         
-        # self.fill_depression(method=1)
-        # return
+        self.fill_depression(method=1)
+        return
         
         print('---------assign dir to neighboring segs if possible-----------')
         #this loop part assigns dir to neighboring segs of dir=0
@@ -1895,6 +1905,7 @@ class dem(object):
 if __name__=="__main__":    
     close('all')
     
+    
 # # #------------------------------------------------------------------------------    
 #     #init
 #     S=dem(); S.read_data('S9_m.npz')
@@ -2757,21 +2768,15 @@ if __name__=="__main__":
     t0=time.time();
     #--------------------------------------------------------------------------
     # S.read_deminfo('GEBCO.asc',subdomain_size=5e5,offset=1)
-    # # S.read_demdata()
+    # S.read_demdata()
     # S.read_data('S1_DEM.npz')
   
-    S.read_deminfo('ne_atl_crm_v1.asc',subdomain_size=1e6,offset=1)
-    S.read_demdata()
-    sys.exit()
-    S.read_data('S2_DEM.npz')
+    # S.read_deminfo('ne_atl_crm_v1.asc',subdomain_size=1e7,offset=1)
+    # S.read_demdata()
+    # S.read_data('S2_DEM.npz')
     
-    S.read_deminfo('13arcs/southern_louisiana_13_navd88_2010.asc',subdomain_size=1e10,offset=1)
-    S.read_data('S4.npz')
-    
-    sys.exit();
-    S.read_demdata()
-    
-    S.save_data('S3_DEM', ['dem'])
+    S.read_deminfo('13arcs/southern_louisiana_13_navd88_2010.asc',subdomain_size=1e7,offset=1)    
+    # S.read_demdata()
     
     print('-------------nsubdomain={}-----------------------------------------'.format(S.info.nsubdomain))
     #compute dir on each subdomain
@@ -2782,7 +2787,10 @@ if __name__=="__main__":
         print('--------------------------------------------------------------')
                 
         Si=S.domains[i]; 
-        Si.read_demdata(data=S.dem)    
+        if hasattr(S,'dem'):
+            Si.read_demdata(data=S.dem)    
+        else:
+            Si.read_demdata()    
         Si.compute_dir();
         
         #if Si is a subdomain, save bnd info for collecting
@@ -2792,6 +2800,7 @@ if __name__=="__main__":
                
         #resolve flat and fill depression
         Si.fill_depression(level_max=100,method=0)
+        delattr(Si,'dem');
         print('time={}, {}'.format(time.time()-t1,time.time()-t0))
         
     #collect dir
@@ -2799,6 +2808,8 @@ if __name__=="__main__":
     
     #save info
     S.save_data('S10_m',['dem','dir','info'])
+    
+    sys.exit()
     
     if S.info.nsubdomain>1:
         #global domain
@@ -2809,7 +2820,7 @@ if __name__=="__main__":
     
     S.compute_watershed()
     S.compute_river(seg,acc_limit=acc_limit)
-    S.write_shapefile('rivers','C1_0_rivers')
+    S.write_shapefile('rivers','B1_3_rivers')
     
     dt=time.time()-t0
            
