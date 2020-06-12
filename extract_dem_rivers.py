@@ -947,7 +947,8 @@ class dem(object):
         
         #get indices for each depression; here seg is numbering, not segment number
         print('---------save all depression points---------------------------')
-        sind_segs=self.search_upstream(sind0,ireturn=9,seg=arange(slen),acc_calc=True,level_max=level_max)
+        # sind_segs=self.search_upstream(sind0,ireturn=9,seg=arange(slen),acc_calc=True,level_max=level_max)
+        sind_segs=self.search_upstream(sind0,ireturn=9,acc_calc=True,level_max=level_max)
         ns0=array([len(i) for i in sind_segs])
                      
         #get depression boundary
@@ -1474,7 +1475,7 @@ class dem(object):
         ireturn=6: uppermost upstream index along the largest river stem
         ireturn=7: save all the cells along the largest upstream river
         ireturn=8: return how many neighbors with same segment number after acc and seg are known
-        ireturn=9: return segment boundary indices
+        ireturn=9: return segment indices. 
         '''
              
         #--pre-define variables        
@@ -1664,7 +1665,7 @@ class dem(object):
                 #search finished at this point
                 sind_next=self.sind_next                
                 sind_list=array([array(i) for i in self.sind_list]) 
-                sind_bnd=array([array(i) for i in self.sind_bnd]) 
+                # sind_bnd=array([array(i) for i in self.sind_bnd]) 
                 sind_seg=array([sort(array(i)).astype('int') for i in self.sind_seg]) 
                 
                 #clean
@@ -1687,8 +1688,8 @@ class dem(object):
                     if ireturn==9:
                         seg_next=seg_up
                         #collect boundary cells                              
-                        isum=sind.reshape([8,slen]).sum(axis=0); fpb=isum==-8
-                        [self.sind_bnd[i].append(j) for i,j in zip(seg[fpb],sind0[fpb])]
+                        # isum=sind.reshape([8,slen]).sum(axis=0); fpb=isum==-8
+                        # [self.sind_bnd[i].append(j) for i,j in zip(seg[fpb],sind0[fpb])]
                         if acc_calc:
                             [self.sind_seg[i].append(j) for i,j in zip(seg,sind0)]
                     else:
@@ -1922,58 +1923,94 @@ class dem(object):
 if __name__=="__main__":    
     close('all')
 
-    S=dem(); S.read_data('S9_m.npz');
-#--------------add near nodata-------------------------------------------------    
-    print('--------------------------------------------------------------')
-    print('---------work on global domain depression---------------------')
-    print('--------------------------------------------------------------')
+#     S=dem(); S.read_data('S9_m2.npz');
     
-    #pre-define variables       
-    ds=S.info.ds; ym,xm=ds
+#     ym,xm=S.info.ds; level_max=100
+# #--------------add near nodata-------------------------------------------------    
+#     print('---------assign dir to neighboring segs if possible-----------')   
     
-    #this part assign dir directly if the original dir of boundary cells is not zero
-    sind0=S.info.sind_bnd_local; iy,ix=unravel_index(sind0,ds); 
-    fp=(iy>0)*(iy<(ym-1))*(ix>0)*(ix<(xm-1)); sind0=sind0[fp]
-    dem0=S.info.dem_bnd_local[fp]; dir0=S.info.dir_bnd_local[fp]; #original
-    dir=S.dir.ravel()[sind0] #at present
+#     #number all segments
+#     fp=S.dir.ravel()[S.info.sind_bnd_local]==0
+#     sind00=S.info.sind_bnd_local[fp]; seg00=arange(len(sind00)).astype('int')+1
+#     S.search_upstream(sind00,ireturn=3,seg=seg00,level_max=level_max,msg=True)
     
-    #exclude nodata bnd pts
-    if len(S.info.sind_bnd_nodata)!=0:
-        sind_bnd_nodata,iA,iB=intersect1d(sind0,S.info.sind_bnd_nodata,return_indices=True)
-        fp=setdiff1d(arange(len(sind0)),iA)
-        sind0=sind0[fp]; dem0=dem0[fp]; dir0=dir0[fp]; dir=dir[fp]
+#     #identify depression catchment
+#     iy,ix=unravel_index(S.info.sind_bnd_local,ds)
+#     fp=(iy>0)*(iy<(ym-1))*(ix>0)*(ix<(xm-1))*(S.dir.ravel()[S.info.sind_bnd_local]==0); 
+#     sind0=S.info.sind_bnd_local[fp]; sind0=setdiff1d(sind0,S.info.sind_bnd_nodata)
     
-    print('---------assign dir directly if original dir is not zero------')
-    #put flow into another seg if its original dir is not zero, it doesn't form loops    
-    fpz=nonzero((dir0!=0)*(dir==0))[0]; 
-    S.dir.ravel()[sind0[fpz]]=dir0[fpz]
+#     #get h00
+#     sindt,iA,iB=intersect1d(sind00,S.info.sind_bnd_local,return_indices=True); h00=S.info.dem_bnd_local[iB]
     
-    #excude pts that forms loops          
-    sind_list,flag_loop=S.search_downstream(sind0[fpz],ireturn=3,msg=False); 
-    fpl=nonzero(flag_loop==1)[0]; sindl=sind0[fpz[fpl]]; deml=dem0[fpz[fpl]] 
-    if len(fpl)!=0:
-        sind_list=array([intersect1d(sindl,i) for i in sind_list[fpl]])   
-        sind_all=[]; ids=[]; id1=0; id2=0;  
-        for i in arange(len(fpl)):            
-            sindi=unique(sind_list[i]); id2=id1+len(sindi)
-            sind_all.extend(sindi)        
-            ids.append(arange(id1,id2).astype('int')); id1=id1+len(sindi) 
-        sind_all=array(sind_all)
-        sindu,fpu=unique(sind_all,return_inverse=True); sindc,iA,iB=intersect1d(sindu,sindl,return_indices=True)
-        if not array_equal(sindu,sindc): sys.exit('sindc!=sindu') 
-        dem_all=deml[iB][fpu]
-        sind_min=unique(array([sind_all[id[nonzero(dem_all[id]==min(dem_all[id]))[0]]] for id in ids]))
-        S.dir.ravel()[sind_min]=0
-        
-    S.fill_depression(method=1)
-    
-    S.compute_watershed()
-    S.compute_river(arange(1,1e7),acc_limit=1e3)
-    S.write_shapefile('rivers','B1_5_rivers')      
+#     #get h0,seg0
+#     sindt,iA,iB=intersect1d(sind0,S.info.sind_bnd_local,return_indices=True); h0=S.info.dem_bnd_local[iB]
+#     sindt,iA,iB=intersect1d(sind0,sind00,return_indices=True); seg0=seg00[iB]
+     
+#     #get indices for each depression
+#     print('---------save all depression points---------------------------')
+#     sind_segs=S.search_upstream(sind0,ireturn=9,acc_calc=True,level_max=level_max)
+#     ns0=array([len(i) for i in sind_segs]) 
 
-    sys.exit()        
+#     #get sind_min and dir_min
+
+#     #get h0_min and sind0_min
+
+#     #compare and assign dir
+
+#     #break loop
+
+#     #continue the loop          
+
+    
+#     sys.exit()
+    
+    
+    
+#     #this loop part assigns dir to neighboring segs of dir=0
+#     iflag=0
+#     while True:      
+#         iflag=iflag+1
+
+        
+#         #exclude nodata bnd pts
+#         if len(S.info.sind_bnd_nodata)!=0:
+#             sind_bnd_nodata,iA,iB=intersect1d(sind0,S.info.sind_bnd_nodata,return_indices=True)
+#             fp=setdiff1d(arange(len(sind0)),iA)
+#             sind0=sind0[fp]; h0=h0[fp]; 
+                                                         
+#         #search and mark each depression            
+#         slen=len(sind0); seg0=arange(slen)+1
+#         S.search_upstream(sind0,ireturn=3,seg=seg0,level_max=level_max,msg=False)
+#         print('fill depression: loop={}, ndep={}'.format(iflag,slen))
+        
+#         #find all the neighboring indices with minimum depth seg 
+#         sind_min,sind0_min,h0_min, dir_min=S.search_flat(sind0,ireturn=8,method=1)        
+#         if sum(sind_min!=0)==0: break        
+#         #reverse dir first
+#         dir_min0=dir_min.copy(); dir_min[:]=0
+#         dir_0=[128,64,32,16,8,4,2,1]; dir_inv=[8,4,2,1,128,64,32,16]
+#         for i in arange(8):
+#             fpr=dir_min0==dir_0[i]; dir_min[fpr]=dir_inv[i] 
+            
+#         #assign dir to the nearest seg with minimum depth; if h0=h0_min, use smaller sind0     
+#         fpm=nonzero(((h0>h0_min)*(sind_min!=0))|((h0==h0_min)*(sind_min!=0)*(sind0<sind0_min)))[0]
+#         if len(fpm)==0: fpm=nonzero((h0==h0_min)*(sind_min!=0)*(sind0>sind0_min))[0]
+#         if len(fpm)==0: break
+#         S.dir.ravel()[sind0[fpm]]=dir_min[fpm]
+#         sind_list,flag_loop=S.search_downstream(sind0[fpm],ireturn=3)
+#         if sum(flag_loop!=0)!=0: sys.exit('loop found: impossible')    
+    
+#     S.save_data('S9_m3',['dem','dir','info'])
+        
+#     S.fill_depression(method=1)
+    
+#     S.compute_watershed()
+#     S.compute_river(arange(1,1e7),acc_limit=1e3)
+#     S.write_shapefile('rivers','B1_5_rivers')      
+
+       
 #------read dem---------------------------------------------------------------- 
-    sys.exit()
+    # sys.exit()
     S=dem(); 
     t0=time.time();
     #--------------------------------------------------------------------------
@@ -2031,7 +2068,7 @@ if __name__=="__main__":
     
     S.compute_watershed()
     S.compute_river(arange(1,1e7),acc_limit=1e2)
-    S.write_shapefile('rivers','A1_2_rivers')
+    S.write_shapefile('rivers','A1_3_rivers')
     
     dt=time.time()-t0
            
