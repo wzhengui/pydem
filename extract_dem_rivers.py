@@ -2003,13 +2003,13 @@ if __name__=="__main__":
     # # S.read_demdata()
     # S.read_data('S1_DEM.npz')
   
-    S.read_deminfo('ne_atl_crm_v1.asc',subdomain_size=2e7,offset=1)
-    S.read_demdata()
+    # S.read_deminfo('ne_atl_crm_v1.asc',subdomain_size=2e7,offset=1)
+    # S.read_demdata()
     # S.read_data('S2_DEM.npz'); 
     
     
-    # S.read_deminfo('13arcs/southern_louisiana_13_navd88_2010.asc',subdomain_size=1e7,offset=1)    
-    # S.read_demdata()
+    S.read_deminfo('13arcs/southern_louisiana_13_navd88_2010.asc',subdomain_size=1e8,offset=1)    
+    S.read_demdata()
     
     print('-------------global domain is divided to: {} subdomains------------'.format(S.info.nsubdomain))
     #compute dir on each subdomain
@@ -2041,7 +2041,6 @@ if __name__=="__main__":
     S.collect_subdomain_data(name='dir',outname='dir')
     
     # S.save_data('S8_m',['dir','info'])
-    
     # sys.exit()
     
     delattr(S,'dem')
@@ -2051,7 +2050,7 @@ if __name__=="__main__":
     
     S.compute_watershed()
     S.compute_river(arange(1,1e7),acc_limit=1e3)
-    S.write_shapefile('rivers','B1_20_rivers')
+    S.write_shapefile('rivers','C1_0_rivers')
     
     dt=time.time()-t0
     print('total time={:.1f}s'.format(time.time()-t0))
