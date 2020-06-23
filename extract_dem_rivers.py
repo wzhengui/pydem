@@ -719,7 +719,7 @@ class dem(object):
             if len(idz)!=0:
                 #save boundary first
                 boundary=self.boundary.copy(); delattr(self,'boundary')
-                self.compute_boundary(sind=sind0[idz]);
+                self.compute_boundary(sind=sind0[idz],msg=msg);
                 if len(idz)==1:
                     boundary[idz[0]]=self.boundary[0]
                 else:
@@ -850,53 +850,54 @@ class dem(object):
         print('--------------------------------------------------------------')
         
         #pre-define variables       
-        ds=self.info.ds; ym,xm=ds
+        ds=self.info.ds; ym,xm=ds; nodata=S.info.nodata
         
-        #this part assign dir directly if the original dir of boundary cells is not zero
-        sind0=self.info.sind_bnd_local; iy,ix=unravel_index(sind0,ds); 
-        fp=(iy>0)*(iy<(ym-1))*(ix>0)*(ix<(xm-1)); sind0=sind0[fp]
-        dem0=self.info.dem_bnd_local[fp]; dir0=self.info.dir_bnd_local[fp]; #original
-        dir=self.dir.ravel()[sind0] #at present
         
-        #exclude nodata bnd pts
-        if len(self.info.sind_bnd_nodata)!=0:
-            sind_bnd_nodata,iA,iB=intersect1d(sind0,self.info.sind_bnd_nodata,return_indices=True)
-            fp=setdiff1d(arange(len(sind0)),iA)
-            sind0=sind0[fp]; dem0=dem0[fp]; dir0=dir0[fp]; dir=dir[fp]
+        # #this part assign dir directly if the original dir of boundary cells is not zero
+        # sind0=self.info.sind_bnd_local; iy,ix=unravel_index(sind0,ds); 
+        # fp=(iy>0)*(iy<(ym-1))*(ix>0)*(ix<(xm-1)); sind0=sind0[fp]
+        # dem0=self.info.dem_bnd_local[fp]; dir0=self.info.dir_bnd_local[fp]; #original
+        # dir=self.dir.ravel()[sind0] #at present
         
-        print('---------assign dir directly if original dir is not zero------')
-        #put flow into another seg if its original dir is not zero, it doesn't form loops    
-        fpz=nonzero((dir0!=0)*(dir==0))[0]; 
-        self.dir.ravel()[sind0[fpz]]=dir0[fpz]
+        # #exclude nodata bnd pts
+        # if len(self.info.sind_bnd_nodata)!=0:
+        #     sind_bnd_nodata,iA,iB=intersect1d(sind0,self.info.sind_bnd_nodata,return_indices=True)
+        #     fp=setdiff1d(arange(len(sind0)),iA)
+        #     sind0=sind0[fp]; dem0=dem0[fp]; dir0=dir0[fp]; dir=dir[fp]
         
-        #excude pts that forms loops          
-        sind_list,flag_loop=self.search_downstream(sind0[fpz],ireturn=3,msg=msg) 
-        fpl=nonzero(flag_loop==1)[0]; sindl=sind0[fpz[fpl]]; deml=dem0[fpz[fpl]] 
-        if len(fpl)!=0:
-            sind_list=array([intersect1d(sindl,i) for i in sind_list[fpl]])   
-            sind_all=[]; ids=[]; id1=0; id2=0;  
-            for i in arange(len(fpl)):            
-                sindi=unique(sind_list[i]); id2=id1+len(sindi)
-                sind_all.extend(sindi)        
-                ids.append(arange(id1,id2).astype('int')); id1=id1+len(sindi) 
-            sind_all=array(sind_all)
-            sindu,fpu=unique(sind_all,return_inverse=True); sindc,iA,iB=intersect1d(sindu,sindl,return_indices=True)
-            if not array_equal(sindu,sindc): sys.exit('sindc!=sindu') 
-            dem_all=deml[iB][fpu]
-            #assign dir=0 for the minimum depth pts
-            sind_min=[]
-            for idi in ids:
-                sind_min.append(sind_all[idi[nonzero(dem_all[idi]==min(dem_all[idi]))[0][0]]])
-            sind_min=array(sind_min)
-            self.dir.ravel()[sind_min]=0        
+        # print('---------assign dir directly if original dir is not zero------')
+        # #put flow into another seg if its original dir is not zero, it doesn't form loops    
+        # fpz=nonzero((dir0!=0)*(dir==0))[0]; 
+        # self.dir.ravel()[sind0[fpz]]=dir0[fpz]
+        
+        # #excude pts that forms loops          
+        # sind_list,flag_loop=self.search_downstream(sind0[fpz],ireturn=3,msg=msg) 
+        # fpl=nonzero(flag_loop==1)[0]; sindl=sind0[fpz[fpl]]; deml=dem0[fpz[fpl]] 
+        # if len(fpl)!=0:
+        #     sind_list=array([intersect1d(sindl,i) for i in sind_list[fpl]])   
+        #     sind_all=[]; ids=[]; id1=0; id2=0;  
+        #     for i in arange(len(fpl)):            
+        #         sindi=unique(sind_list[i]); id2=id1+len(sindi)
+        #         sind_all.extend(sindi)        
+        #         ids.append(arange(id1,id2).astype('int')); id1=id1+len(sindi) 
+        #     sind_all=array(sind_all)
+        #     sindu,fpu=unique(sind_all,return_inverse=True); sindc,iA,iB=intersect1d(sindu,sindl,return_indices=True)
+        #     if not array_equal(sindu,sindc): sys.exit('sindc!=sindu') 
+        #     dem_all=deml[iB][fpu]
+        #     #assign dir=0 for the minimum depth pts
+        #     sind_min=[]
+        #     for idi in ids:
+        #         sind_min.append(sind_all[idi[nonzero(dem_all[idi]==min(dem_all[idi]))[0][0]]])
+        #     sind_min=array(sind_min)
+        #     self.dir.ravel()[sind_min]=0        
             
-        #if dem exists, use fill_depression directly
-        if hasattr(self,'dem'):
-            self.fill_depression(method=1)   
-            return
+        # #if dem exists, use fill_depression directly
+        # if hasattr(self,'dem'):
+        #     self.fill_depression(method=1)   
+        #     return
             
-        # S.save_data('S8_m2',['dir','info'])
-        # return
+        # # S.save_data('S8_m2',['dir','info'])
+        # # return
         
         #----------------------------------------------------------------------
         #fill depression in global domain without dem (only dem on boundary and sind0 are known)
@@ -1091,7 +1092,7 @@ class dem(object):
             if sum(flag_true)==0: 
                 sind_true_unique, fpu=unique(sind_true,return_inverse=True)
                 sindc,iA,iB=intersect1d(sind_true_unique,sind0,return_indices=True)
-                sind_true_unique[iA]=S.info.nodata
+                sind_true_unique[iA]=nodata
                 flag_true=sind_true_unique[fpu]!=nodata
                     
             #create flag             
@@ -1991,69 +1992,76 @@ class dem(object):
 if __name__=="__main__":    
     close('all')
     
-    # S=dem(); S.read_data('S8_m.npz'); 
-    # S.fill_depression_global()
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------    
+#     S=dem(); S.read_data('S10_m.npz'); 
+#     S.fill_depression_global()
     
-#------read dem---------------------------------------------------------------- 
-    # sys.exit()
-    S=dem(); 
-    t0=time.time();
-    #--------------------------------------------------------------------------
-    # S.read_deminfo('GEBCO.asc',subdomain_size=1e6,offset=1)
-    # # S.read_demdata()
-    # S.read_data('S1_DEM.npz')
+#     S.compute_watershed()
+#     S.compute_river(arange(1,1e7),acc_limit=1e3)
+#     S.write_shapefile('rivers','C1_1_rivers')
+    
+#     sys.exit()
+    
+# #------read dem---------------------------------------------------------------- 
+#     # sys.exit()
+#     S=dem(); 
+#     t0=time.time();
+#     #--------------------------------------------------------------------------
+#     # S.read_deminfo('GEBCO.asc',subdomain_size=1e6,offset=1)
+#     # # S.read_demdata()
+#     # S.read_data('S1_DEM.npz')
   
-    # S.read_deminfo('ne_atl_crm_v1.asc',subdomain_size=2e7,offset=1)
-    # S.read_demdata()
-    # S.read_data('S2_DEM.npz'); 
+#     # S.read_deminfo('ne_atl_crm_v1.asc',subdomain_size=2e7,offset=1)
+#     # S.read_demdata()
+#     # S.read_data('S2_DEM.npz'); 
     
+#     S.read_deminfo('13arcs/southern_louisiana_13_navd88_2010.asc',subdomain_size=2e7,offset=1)    
+#     # S.read_demdata()
     
-    S.read_deminfo('13arcs/southern_louisiana_13_navd88_2010.asc',subdomain_size=1e8,offset=1)    
-    S.read_demdata()
-    
-    print('-------------global domain is divided to: {} subdomains------------'.format(S.info.nsubdomain))
-    #compute dir on each subdomain
-    for i in arange(S.info.nsubdomain):
-        t1=time.time();
-        print('--------------------------------------------------------------')
-        print('---------work on depression: subdomain {}---------------------'.format(i+1))
-        print('--------------------------------------------------------------')
+#     print('-------------global domain is divided to: {} subdomains------------'.format(S.info.nsubdomain))
+#     #compute dir on each subdomain
+#     for i in arange(S.info.nsubdomain):
+#         t1=time.time();
+#         print('--------------------------------------------------------------')
+#         print('---------work on depression: subdomain {}---------------------'.format(i+1))
+#         print('--------------------------------------------------------------')
 
-        Si=S.domains[i]; 
-        if hasattr(S,'dem'):
-            Si.read_demdata(data=S.dem)    
-        else:
-            Si.read_demdata()    
+#         Si=S.domains[i]; 
+#         if hasattr(S,'dem'):
+#             Si.read_demdata(data=S.dem)    
+#         else:
+#             Si.read_demdata()    
                             
-        Si.compute_dir();
+#         Si.compute_dir();
         
-        #if Si is a subdomain, save bnd info for collecting
-        if S.info.nsubdomain>1:            
-            Si.collapse_subdomain();              
-            Si.change_bnd_dir()     
+#         #if Si is a subdomain, save bnd info for collecting
+#         if S.info.nsubdomain>1:            
+#             Si.collapse_subdomain();              
+#             Si.change_bnd_dir()     
                                
-        #resolve flat and fill depression
-        Si.fill_depression(level_max=100,method=0)
-        delattr(Si,'dem');
-        print('time={:.1f}s, total time={:.1f}s'.format(time.time()-t1,time.time()-t0))
+#         #resolve flat and fill depression
+#         Si.fill_depression(level_max=100,method=0)
+#         delattr(Si,'dem');
+#         print('time={:.1f}s, total time={:.1f}s'.format(time.time()-t1,time.time()-t0))
                               
-    #collect dir
-    S.collect_subdomain_data(name='dir',outname='dir')
+#     #collect dir
+#     S.collect_subdomain_data(name='dir',outname='dir')
+#     S.info.nodata=Si.info.nodata
     
-    # S.save_data('S8_m',['dir','info'])
-    # sys.exit()
+#     # S.save_data('S8_m',['dir','info'])
     
-    delattr(S,'dem')
-    if S.info.nsubdomain>1:
-        #global domain
-        S.fill_depression_global() 
+#     if S.info.nsubdomain>1:
+#         #global domain
+#         S.fill_depression_global() 
     
-    S.compute_watershed()
-    S.compute_river(arange(1,1e7),acc_limit=1e3)
-    S.write_shapefile('rivers','C1_0_rivers')
+#     S.compute_watershed()
+#     S.compute_river(arange(1,1e7),acc_limit=1e4)
+#     S.write_shapefile('rivers','C1_2_rivers')
     
-    dt=time.time()-t0
-    print('total time={:.1f}s'.format(time.time()-t0))
+#     dt=time.time()-t0
+#     print('total time={:.1f}s'.format(time.time()-t0))
            
     
         
@@ -2413,283 +2421,283 @@ if __name__=="__main__":
     # imshow(S.acc,vmin=0,vmax=1e3)
     
 #---------------------test on global depression--------------------------------
-    sys.exit()
-    close('all')
-    S=dem(); S.read_data('S8_m2.npz');
+    # sys.exit()
+    # close('all')
+    # S=dem(); S.read_data('S8_m2.npz');
 
-    ds=S.info.ds; ym,xm=ds; level_max=100
-    #--------------add near nodata---------------------------------------------
-    print('---------assign dir to neighboring segs if possible-----------')   
+    # ds=S.info.ds; ym,xm=ds; level_max=100
+    # #--------------add near nodata---------------------------------------------
+    # print('---------assign dir to neighboring segs if possible-----------')   
     
-    #number all segments
-    fp=S.dir.ravel()[S.info.sind_bnd_local]==0
-    sind00=sort(S.info.sind_bnd_local[fp]); seg00=arange(len(sind00)).astype('int')+1
-    S.search_upstream(sind00,ireturn=3,seg=seg00,level_max=level_max,msg=False)
-    #get h00
-    tmp,iA,iB=intersect1d(sind00,S.info.sind_bnd_local,return_indices=True); h00=S.info.dem_bnd_local[iB].copy()
+    # #number all segments
+    # fp=S.dir.ravel()[S.info.sind_bnd_local]==0
+    # sind00=sort(S.info.sind_bnd_local[fp]); seg00=arange(len(sind00)).astype('int')+1
+    # S.search_upstream(sind00,ireturn=3,seg=seg00,level_max=level_max,msg=False)
+    # #get h00
+    # tmp,iA,iB=intersect1d(sind00,S.info.sind_bnd_local,return_indices=True); h00=S.info.dem_bnd_local[iB].copy()
 
-    sind_segs0=S.search_upstream(sind00,ireturn=9,acc_calc=True,level_max=level_max,msg=False)    
+    # sind_segs0=S.search_upstream(sind00,ireturn=9,acc_calc=True,level_max=level_max,msg=False)    
         
-    #identify all depressions 
-    iy,ix=unravel_index(S.info.sind_bnd_local,ds)
-    fp=(iy>0)*(iy<(ym-1))*(ix>0)*(ix<(xm-1))*(S.dir.ravel()[S.info.sind_bnd_local]==0)
-    sind0=S.info.sind_bnd_local[fp].copy(); sind0=setdiff1d(sind0,S.info.sind_bnd_nodata); slen=len(sind0)
+    # #identify all depressions 
+    # iy,ix=unravel_index(S.info.sind_bnd_local,ds)
+    # fp=(iy>0)*(iy<(ym-1))*(ix>0)*(ix<(xm-1))*(S.dir.ravel()[S.info.sind_bnd_local]==0)
+    # sind0=S.info.sind_bnd_local[fp].copy(); sind0=setdiff1d(sind0,S.info.sind_bnd_nodata); slen=len(sind0)
     
-    #get indices for each depression
-    print('---------save all depression points---------------------------')
-    sind_segs=S.search_upstream(sind0,ireturn=9,acc_calc=True,level_max=level_max,msg=False)    
+    # #get indices for each depression
+    # print('---------save all depression points---------------------------')
+    # sind_segs=S.search_upstream(sind0,ireturn=9,acc_calc=True,level_max=level_max,msg=False)    
     
-    iloop=0    
-    while slen!=0:
-        iloop=iloop+1; print("iloop={}, npts={}".format(iloop,slen))
-        #get h0,seg0
-        tmp,iA,iB=intersect1d(sind0,S.info.sind_bnd_local,return_indices=True); h0=S.info.dem_bnd_local[iB].copy()
-        tmp,iA,iB=intersect1d(sind0,sind00,return_indices=True); seg0=seg00[iB].copy()
+    # iloop=0    
+    # while slen!=0:
+    #     iloop=iloop+1; print("iloop={}, npts={}".format(iloop,slen))
+    #     #get h0,seg0
+    #     tmp,iA,iB=intersect1d(sind0,S.info.sind_bnd_local,return_indices=True); h0=S.info.dem_bnd_local[iB].copy()
+    #     tmp,iA,iB=intersect1d(sind0,sind00,return_indices=True); seg0=seg00[iB].copy()
                     
-        #--------------------------------------------------------------------------
-        #get sind_min, dir_min and h_min
-        #--------------------------------------------------------------------------
-        #index
-        iy0,ix0=unravel_index(sind0,ds)
-        yind=r_[iy0,  iy0-1, iy0,  iy0+1, iy0-1,iy0-1, iy0+1, iy0+1]
-        xind=r_[ix0+1,ix0,   ix0-1,ix0,   ix0+1,ix0-1, ix0-1, ix0+1]
-        #true neighbors
-        fpt=nonzero((xind>=0)*(xind<xm)*(yind>=0)*(yind<ym))[0]
-        sind_true=ravel_multi_index([yind[fpt],xind[fpt]],ds);
-        fptt=S.dir.ravel()[sind_true]!=-1; fpt=fpt[fptt].copy(); sind_true=sind_true[fptt].copy()
+    #     #--------------------------------------------------------------------------
+    #     #get sind_min, dir_min and h_min
+    #     #--------------------------------------------------------------------------
+    #     #index
+    #     iy0,ix0=unravel_index(sind0,ds)
+    #     yind=r_[iy0,  iy0-1, iy0,  iy0+1, iy0-1,iy0-1, iy0+1, iy0+1]
+    #     xind=r_[ix0+1,ix0,   ix0-1,ix0,   ix0+1,ix0-1, ix0-1, ix0+1]
+    #     #true neighbors
+    #     fpt=nonzero((xind>=0)*(xind<xm)*(yind>=0)*(yind<ym))[0]
+    #     sind_true=ravel_multi_index([yind[fpt],xind[fpt]],ds);
+    #     fptt=S.dir.ravel()[sind_true]!=-1; fpt=fpt[fptt].copy(); sind_true=sind_true[fptt].copy()
                          
-        #find neighbor segment depth
-        fpn=nonzero(S.seg.ravel()[sind_true]!=tile(seg0,8)[fpt])[0];
-        sindu,fpu=unique(sind_true[fpn],return_inverse=True); 
-        seguu,fpuu=unique(S.seg.ravel()[sindu],return_inverse=True)    
-        tmp,iA,iB=intersect1d(seguu,seg00,return_indices=True); demn=h00[iB][fpuu][fpu].copy()
+    #     #find neighbor segment depth
+    #     fpn=nonzero(S.seg.ravel()[sind_true]!=tile(seg0,8)[fpt])[0];
+    #     sindu,fpu=unique(sind_true[fpn],return_inverse=True); 
+    #     seguu,fpuu=unique(S.seg.ravel()[sindu],return_inverse=True)    
+    #     tmp,iA,iB=intersect1d(seguu,seg00,return_indices=True); demn=h00[iB][fpuu][fpu].copy()
         
-        #find seg_min, and dir_min
-        dem_all=1e6*ones([8,slen]); dem_all.ravel()[fpt[fpn]]=demn;  iy_min=argmin(dem_all,axis=0);
-        sind_all=-ones([8,slen]).astype('int'); sind_all.ravel()[fpt[fpn]]=sind_true[fpn]    
-        dir_all=tile(array([1,64,16,4,128,32,8,2]),slen).reshape([slen,8]).T  
+    #     #find seg_min, and dir_min
+    #     dem_all=1e6*ones([8,slen]); dem_all.ravel()[fpt[fpn]]=demn;  iy_min=argmin(dem_all,axis=0);
+    #     sind_all=-ones([8,slen]).astype('int'); sind_all.ravel()[fpt[fpn]]=sind_true[fpn]    
+    #     dir_all=tile(array([1,64,16,4,128,32,8,2]),slen).reshape([slen,8]).T  
         
-        h_b=dem_all[iy_min,arange(slen)]; 
-        sindb=sind_all[iy_min,arange(slen)]; #on the segment boundary 
-        dir_min=dir_all[iy_min,arange(slen)];
-        seg_min=S.seg.ravel()[sindb]
+    #     h_b=dem_all[iy_min,arange(slen)]; 
+    #     sindb=sind_all[iy_min,arange(slen)]; #on the segment boundary 
+    #     dir_min=dir_all[iy_min,arange(slen)];
+    #     seg_min=S.seg.ravel()[sindb]
 
-        #find sind_min, h_min, id_min (refer to index of sind0)
-        sind_min=-ones(slen).astype('int'); id_min=sind_min.copy(); h_min=int(1e6)*ones(slen)
-        fpn=nonzero(seg_min!=-1)[0]; seg_minu,fpu=unique(seg_min[fpn],return_inverse=True)
-        tmp,iA,iB=intersect1d(seg_minu,seg00,return_indices=True);  
-        sind_min[fpn]=sind00[iB][fpu].copy(); h_min[fpn]=h00[iB][fpu].copy()        
+    #     #find sind_min, h_min, id_min (refer to index of sind0)
+    #     sind_min=-ones(slen).astype('int'); id_min=sind_min.copy(); h_min=int(1e6)*ones(slen)
+    #     fpn=nonzero(seg_min!=-1)[0]; seg_minu,fpu=unique(seg_min[fpn],return_inverse=True)
+    #     tmp,iA,iB=intersect1d(seg_minu,seg00,return_indices=True);  
+    #     sind_min[fpn]=sind00[iB][fpu].copy(); h_min[fpn]=h00[iB][fpu].copy()        
                 
-        tmp,iA,iB=intersect1d(seg_minu,seg0,return_indices=True);  
-        id_tmp=-ones(len(seg_minu)); id_tmp[iA]=iB; id_min[fpn]=id_tmp[fpu].copy()
+    #     tmp,iA,iB=intersect1d(seg_minu,seg0,return_indices=True);  
+    #     id_tmp=-ones(len(seg_minu)); id_tmp[iA]=iB; id_min[fpn]=id_tmp[fpu].copy()
                 
-        #--------------------------------------------------------------------------
-        #compare h0 and h_min, and assign dir
-        #--------------------------------------------------------------------------
-        fpm=nonzero(((h0>h_min)*(sind_min!=-1))|((h0==h_min)*(sind_min!=-1)*(sind0<sind_min)))[0]
-        if len(fpm)==0: fpm=nonzero((h0==h_min)*(sind_min!=-1)*(sind0>sind_min))[0]
-        if len(fpm)==0: break                
+    #     #--------------------------------------------------------------------------
+    #     #compare h0 and h_min, and assign dir
+    #     #--------------------------------------------------------------------------
+    #     fpm=nonzero(((h0>h_min)*(sind_min!=-1))|((h0==h_min)*(sind_min!=-1)*(sind0<sind_min)))[0]
+    #     if len(fpm)==0: fpm=nonzero((h0==h_min)*(sind_min!=-1)*(sind0>sind_min))[0]
+    #     if len(fpm)==0: break                
         
-        #assign dir, and break loops in case
-        S.dir.ravel()[sind0[fpm]]=dir_min[fpm]
-        sind_list, flag_loop=S.search_downstream(sind0[fpm],ireturn=3,msg=False)    
-        fpl=fpm[nonzero(flag_loop==1)[0]]; S.dir.ravel()[sind0[fpl]]=0
-        fpr=fpm[nonzero(flag_loop!=1)[0]] 
-        if len(fpr)==0: break
+    #     #assign dir, and break loops in case
+    #     S.dir.ravel()[sind0[fpm]]=dir_min[fpm]
+    #     sind_list, flag_loop=S.search_downstream(sind0[fpm],ireturn=3,msg=False)    
+    #     fpl=fpm[nonzero(flag_loop==1)[0]]; S.dir.ravel()[sind0[fpl]]=0
+    #     fpr=fpm[nonzero(flag_loop!=1)[0]] 
+    #     if len(fpr)==0: break
                 
-        #to find seg_min_final, for mofidy
-        seg_min[setdiff1d(arange(slen),fpm)]=-1;  seg_min[fpl]=-1
-        seg_min_final=seg_min.copy()
-        fpi=nonzero(seg_min!=-1)[0]; 
-        while True:
-            seg_min_unique,fpu=unique(seg_min_final[fpi],return_inverse=True)
-            segc,iA,iB=intersect1d(seg0[fpi],seg_min_unique,return_indices=True)
-            if len(segc)==0:break
-            seg_min_unique[iB]=seg_min[fpi[iA]]
-            seg_min_final[fpi]=seg_min_unique[fpu]
+    #     #to find seg_min_final, for mofidy
+    #     seg_min[setdiff1d(arange(slen),fpm)]=-1;  seg_min[fpl]=-1
+    #     seg_min_final=seg_min.copy()
+    #     fpi=nonzero(seg_min!=-1)[0]; 
+    #     while True:
+    #         seg_min_unique,fpu=unique(seg_min_final[fpi],return_inverse=True)
+    #         segc,iA,iB=intersect1d(seg0[fpi],seg_min_unique,return_indices=True)
+    #         if len(segc)==0:break
+    #         seg_min_unique[iB]=seg_min[fpi[iA]]
+    #         seg_min_final[fpi]=seg_min_unique[fpu]
     
-        #to find id_min_final
-        id_min[setdiff1d(arange(slen),fpm)]=-1; id_min[fpl]=-1; 
-        fpi=nonzero(id_min!=-1)[0]; id_min_final=id_min.copy()        
-        #because all of fpi are linked to another seg that is not in fpi itself. Therefore, id_min and fpi has no intersection
-        while True:                                      
-            id_min_unique,fpu=unique(id_min_final[fpi],return_inverse=True)            
-            idc,iA,iB=intersect1d(fpi,id_min_unique,return_indices=True)
-            if len(idc)==0: break
-            id_min_unique[iB]=id_min[idc]
-            id_min_final[fpi]=id_min_unique[fpu]  
+    #     #to find id_min_final
+    #     id_min[setdiff1d(arange(slen),fpm)]=-1; id_min[fpl]=-1; 
+    #     fpi=nonzero(id_min!=-1)[0]; id_min_final=id_min.copy()        
+    #     #because all of fpi are linked to another seg that is not in fpi itself. Therefore, id_min and fpi has no intersection
+    #     while True:                                      
+    #         id_min_unique,fpu=unique(id_min_final[fpi],return_inverse=True)            
+    #         idc,iA,iB=intersect1d(fpi,id_min_unique,return_indices=True)
+    #         if len(idc)==0: break
+    #         id_min_unique[iB]=id_min[idc]
+    #         id_min_final[fpi]=id_min_unique[fpu]  
            
-        #assign new seg number               
-        for i in fpr:            
-            S.seg.ravel()[sind_segs[i]]=seg_min_final[i]        
-            if id_min[i]!=-1: sind_segs[id_min_final[i]]=r_[sind_segs[id_min_final[i]],sind_segs[i]]
+    #     #assign new seg number               
+    #     for i in fpr:            
+    #         S.seg.ravel()[sind_segs[i]]=seg_min_final[i]        
+    #         if id_min[i]!=-1: sind_segs[id_min_final[i]]=r_[sind_segs[id_min_final[i]],sind_segs[i]]
         
-        #check
-        figure()
-        biy,bix=unravel_index(nonzero(S.seg.ravel()==253)[0],ds); plot(bix,biy,'b.')
-        biy,bix=unravel_index(sind_segs[nonzero(seg0==253)[0][0]],ds); plot(bix,biy,'r+')
+    #     #check
+    #     figure()
+    #     biy,bix=unravel_index(nonzero(S.seg.ravel()==253)[0],ds); plot(bix,biy,'b.')
+    #     biy,bix=unravel_index(sind_segs[nonzero(seg0==253)[0][0]],ds); plot(bix,biy,'r+')
   
                         
-        #update sind0, sind_segs
-        ids=setdiff1d(arange(slen),fpr)
-        sind0=sind0[ids]; slen=len(sind0)
-        sind_segs=sind_segs[ids]      
+    #     #update sind0, sind_segs
+    #     ids=setdiff1d(arange(slen),fpr)
+    #     sind0=sind0[ids]; slen=len(sind0)
+    #     sind_segs=sind_segs[ids]      
         
 
-    #--------------------------------------------------------------------------
-    #find the shortest route to other lower segments
-    #sind0,sind_segs,slen
-    #--------------------------------------------------------------------------           
+    # #--------------------------------------------------------------------------
+    # #find the shortest route to other lower segments
+    # #sind0,sind_segs,slen
+    # #--------------------------------------------------------------------------           
     
-    #compute boundary
-    S.compute_boundary(sind=sind0,msg=False)
+    # #compute boundary
+    # S.compute_boundary(sind=sind0,msg=False)
         
-    iloop=0
-    while slen!=0: 
-        iloop=iloop+1; print("iloop={}, npts={}".format(iloop,slen))
-        #get h0,seg0
-        tmp,iA,iB=intersect1d(sind0,S.info.sind_bnd_local,return_indices=True); h0=S.info.dem_bnd_local[iB].copy()
-        tmp,iA,iB=intersect1d(sind0,sind00,return_indices=True); seg0=seg00[iB].copy()
+    # iloop=0
+    # while slen!=0: 
+    #     iloop=iloop+1; print("iloop={}, npts={}".format(iloop,slen))
+    #     #get h0,seg0
+    #     tmp,iA,iB=intersect1d(sind0,S.info.sind_bnd_local,return_indices=True); h0=S.info.dem_bnd_local[iB].copy()
+    #     tmp,iA,iB=intersect1d(sind0,sind00,return_indices=True); seg0=seg00[iB].copy()
         
-        #exclude nonboundary indices
-        sind_bnd_all=[]; ids=[]; id1=0; id2=0;  
-        for i in arange(slen):
-            nsind=len(S.boundary[i])
-            id2=id1+nsind
-            sind_bnd_all.extend(S.boundary[i])                    
-            ids.append(arange(id1,id2).astype('int')); id1=id1+nsind
-        sind_bnd_all=array(sind_bnd_all); ids=array(ids)
-        flag_bnd_all=S.search_flat(sind_bnd_all,ireturn=10)
-        for i in arange(slen):
-            S.boundary[i]=sind_bnd_all[ids[i][flag_bnd_all[ids[i]]]]
+    #     #exclude nonboundary indices
+    #     sind_bnd_all=[]; ids=[]; id1=0; id2=0;  
+    #     for i in arange(slen):
+    #         nsind=len(S.boundary[i])
+    #         id2=id1+nsind
+    #         sind_bnd_all.extend(S.boundary[i])                    
+    #         ids.append(arange(id1,id2).astype('int')); id1=id1+nsind
+    #     sind_bnd_all=array(sind_bnd_all); ids=array(ids)
+    #     flag_bnd_all=S.search_flat(sind_bnd_all,ireturn=10)
+    #     for i in arange(slen):
+    #         S.boundary[i]=sind_bnd_all[ids[i][flag_bnd_all[ids[i]]]]
         
-        #recalcuate bnd for seg with false boundary; caused by some segs resides some other segs
-        len_seg=array([len(i) for i in sind_segs]); 
-        len_bnd=array([len(i) for i in S.boundary])
-        idz=nonzero((len_bnd==0)*(len_seg!=0))[0]
-        if len(idz)!=0:
-            #save boundary first
-            boundary=S.boundary.copy(); delattr(S,'boundary')
-            S.compute_boundary(sind=sind0[idz],msg=False);
-            if len(idz)==1:
-                boundary[idz[0]]=S.boundary[0]
-            else:
-                boundary[idz]=S.boundary
-            S.boundary=boundary; boundary=None
+    #     #recalcuate bnd for seg with false boundary; caused by some segs resides some other segs
+    #     len_seg=array([len(i) for i in sind_segs]); 
+    #     len_bnd=array([len(i) for i in S.boundary])
+    #     idz=nonzero((len_bnd==0)*(len_seg!=0))[0]
+    #     if len(idz)!=0:
+    #         #save boundary first
+    #         boundary=S.boundary.copy(); delattr(S,'boundary')
+    #         S.compute_boundary(sind=sind0[idz],msg=False);
+    #         if len(idz)==1:
+    #             boundary[idz[0]]=S.boundary[0]
+    #         else:
+    #             boundary[idz]=S.boundary
+    #         S.boundary=boundary; boundary=None
         
-        #rearrange boundary index
-        sind_bnd_all=[]; h0_all=[]; ids=[]; id1=0; id2=0;  
-        for i in arange(slen):
-            nsind=len(S.boundary[i])
-            id2=id1+nsind
-            sind_bnd_all.extend(S.boundary[i])            
-            h0_all.extend(ones(nsind)*h0[i])
-            ids.append(arange(id1,id2).astype('int')); id1=id1+nsind
-        sind_bnd_all=array(sind_bnd_all); h0_all=array(h0_all); ids=array(ids)
+    #     #rearrange boundary index
+    #     sind_bnd_all=[]; h0_all=[]; ids=[]; id1=0; id2=0;  
+    #     for i in arange(slen):
+    #         nsind=len(S.boundary[i])
+    #         id2=id1+nsind
+    #         sind_bnd_all.extend(S.boundary[i])            
+    #         h0_all.extend(ones(nsind)*h0[i])
+    #         ids.append(arange(id1,id2).astype('int')); id1=id1+nsind
+    #     sind_bnd_all=array(sind_bnd_all); h0_all=array(h0_all); ids=array(ids)
         
-        #length of routes
-        len_stream=S.search_downstream(sind_bnd_all,ireturn=4,msg=False)
+    #     #length of routes
+    #     len_stream=S.search_downstream(sind_bnd_all,ireturn=4,msg=False)
         
-        #sort by length
-        for i in arange(slen):
-            id=ids[i]
-            ind_sort=argsort(len_stream[id])
-            len_stream[id]=len_stream[id][ind_sort]
-            sind_bnd_all[id]=sind_bnd_all[id][ind_sort]
+    #     #sort by length
+    #     for i in arange(slen):
+    #         id=ids[i]
+    #         ind_sort=argsort(len_stream[id])
+    #         len_stream[id]=len_stream[id][ind_sort]
+    #         sind_bnd_all[id]=sind_bnd_all[id][ind_sort]
                 
-        #neighboring segments          
-        iy0,ix0=unravel_index(sind_bnd_all,ds)
-        yind=r_[iy0,  iy0-1, iy0,  iy0+1, iy0-1,iy0-1, iy0+1, iy0+1]
-        xind=r_[ix0+1,ix0,   ix0-1,ix0,   ix0+1,ix0-1, ix0-1, ix0+1]
-        #true neighbors
-        fpt=nonzero((xind>=0)*(xind<xm)*(yind>=0)*(yind<ym))[0]
-        sind_true=ravel_multi_index([yind[fpt],xind[fpt]],ds);
-        fptt=nonzero((S.dir.ravel()[sind_true]!=-1)*(S.seg.ravel()[sind_true]!=S.seg.ravel()[tile(sind_bnd_all,8)[fpt]]))[0]    
-        fpt=fpt[fptt]; sind_true=sind_true[fptt]; 
+    #     #neighboring segments          
+    #     iy0,ix0=unravel_index(sind_bnd_all,ds)
+    #     yind=r_[iy0,  iy0-1, iy0,  iy0+1, iy0-1,iy0-1, iy0+1, iy0+1]
+    #     xind=r_[ix0+1,ix0,   ix0-1,ix0,   ix0+1,ix0-1, ix0-1, ix0+1]
+    #     #true neighbors
+    #     fpt=nonzero((xind>=0)*(xind<xm)*(yind>=0)*(yind<ym))[0]
+    #     sind_true=ravel_multi_index([yind[fpt],xind[fpt]],ds);
+    #     fptt=nonzero((S.dir.ravel()[sind_true]!=-1)*(S.seg.ravel()[sind_true]!=S.seg.ravel()[tile(sind_bnd_all,8)[fpt]]))[0]    
+    #     fpt=fpt[fptt]; sind_true=sind_true[fptt]; 
                 
-        #to find h_true
-        seg_true=S.seg.ravel()[sind_true]
-        seg_true_unique,fpu=unique(seg_true,return_inverse=True)
-        tmp,iA,iB=intersect1d(seg_true_unique,seg00,return_indices=True); h_true=h00[iB][fpu]
+    #     #to find h_true
+    #     seg_true=S.seg.ravel()[sind_true]
+    #     seg_true_unique,fpu=unique(seg_true,return_inverse=True)
+    #     tmp,iA,iB=intersect1d(seg_true_unique,seg00,return_indices=True); h_true=h00[iB][fpu]
         
-        #compare segment depth        
-        flag_true=h_true<tile(h0_all,8)[fpt]        
-        if sum(flag_true)==0: 
-            sind_true_unique, fpu=unique(sind_true,return_inverse=True)
-            sindc,iA,iB=intersect1d(sind_true_unique,sind0,return_indices=True)
-            sind_true_unique[iA]=S.info.nodata
-            flag_true=sind_true_unique[fpu]!=nodata
+    #     #compare segment depth        
+    #     flag_true=h_true<tile(h0_all,8)[fpt]        
+    #     if sum(flag_true)==0: 
+    #         sind_true_unique, fpu=unique(sind_true,return_inverse=True)
+    #         sindc,iA,iB=intersect1d(sind_true_unique,sind0,return_indices=True)
+    #         sind_true_unique[iA]=S.info.nodata
+    #         flag_true=sind_true_unique[fpu]!=nodata
                 
-        #creat flag             
-        flag_all=zeros([8,len(sind_bnd_all)])==1; flag_all.ravel()[fpt]=flag_true
-        seg_all=-ones([8,len(sind_bnd_all)]).astype('int'); seg_all.ravel()[fpt]=seg_true
-        sind_all=-ones([8,len(sind_bnd_all)]).astype('int'); sind_all.ravel()[fpt]=sind_true
+    #     #creat flag             
+    #     flag_all=zeros([8,len(sind_bnd_all)])==1; flag_all.ravel()[fpt]=flag_true
+    #     seg_all=-ones([8,len(sind_bnd_all)]).astype('int'); seg_all.ravel()[fpt]=seg_true
+    #     sind_all=-ones([8,len(sind_bnd_all)]).astype('int'); sind_all.ravel()[fpt]=sind_true
         
-        flagn=zeros(len(sind_bnd_all))==1;  
-        dirn=-ones(len(sind_bnd_all)).astype('int');
-        segn=dirn.copy(); sindn=dirn.copy()
+    #     flagn=zeros(len(sind_bnd_all))==1;  
+    #     dirn=-ones(len(sind_bnd_all)).astype('int');
+    #     segn=dirn.copy(); sindn=dirn.copy()
         
-        # dir0=array([1,64,16,4,128,32,8,2]).astype('int')
-        dir0=array([16,4,1,64,8,2,128,32]).astype('int')
-        for i in arange(8):
-            fp=(flag_all[i])*(~flagn)
-            flagn[fp]=True
-            dirn[fp]=dir0[i]
-            segn[fp]=seg_all[i][fp]
-            sindn[fp]=sind_all[i][fp]
+    #     # dir0=array([1,64,16,4,128,32,8,2]).astype('int')
+    #     dir0=array([16,4,1,64,8,2,128,32]).astype('int')
+    #     for i in arange(8):
+    #         fp=(flag_all[i])*(~flagn)
+    #         flagn[fp]=True
+    #         dirn[fp]=dir0[i]
+    #         segn[fp]=seg_all[i][fp]
+    #         sindn[fp]=sind_all[i][fp]
             
-        #find the outlet for each segment
-        fpo=[]; sind_min=[]; dir_min=[]; seg_min=[]
-        for i in arange(slen):
-            id=ids[i]
-            fp=nonzero(flagn[id])[0]
-            if len(fp)==0: continue
+    #     #find the outlet for each segment
+    #     fpo=[]; sind_min=[]; dir_min=[]; seg_min=[]
+    #     for i in arange(slen):
+    #         id=ids[i]
+    #         fp=nonzero(flagn[id])[0]
+    #         if len(fp)==0: continue
             
-            #save information about the outlet        
-            fpo.append(i)
-            sind_min.append(sind_bnd_all[id][fp[0]])
-            dir_min.append(dirn[id][fp[0]])
-            seg_min.append(segn[id][fp[0]])
-        fpo=array(fpo); sind_min=array(sind_min); dir_min=array(dir_min); seg_min=array(seg_min)
+    #         #save information about the outlet        
+    #         fpo.append(i)
+    #         sind_min.append(sind_bnd_all[id][fp[0]])
+    #         dir_min.append(dirn[id][fp[0]])
+    #         seg_min.append(segn[id][fp[0]])
+    #     fpo=array(fpo); sind_min=array(sind_min); dir_min=array(dir_min); seg_min=array(seg_min)
         
-        #save index and dir along the shortest route    
-        sind_streams=S.search_downstream(sind_min,ireturn=2)
-        sind_all=[]; dir_all=[]
-        for i in arange(len(fpo)):
-            sind_stream=sind_streams[i]
-            sind_all.extend(sind_stream)
-            dir_all.extend(r_[dir_min[i], S.dir.ravel()[sind_stream][:-1]])
-        sind_all=array(sind_all); dir_all=array(dir_all); dir_all0=dir_all.copy()
+    #     #save index and dir along the shortest route    
+    #     sind_streams=S.search_downstream(sind_min,ireturn=2)
+    #     sind_all=[]; dir_all=[]
+    #     for i in arange(len(fpo)):
+    #         sind_stream=sind_streams[i]
+    #         sind_all.extend(sind_stream)
+    #         dir_all.extend(r_[dir_min[i], S.dir.ravel()[sind_stream][:-1]])
+    #     sind_all=array(sind_all); dir_all=array(dir_all); dir_all0=dir_all.copy()
             
-        #reverse dir along the shortest route 
-        dir_0=[128,64,32,16,8,4,2,1]; dir_inv=[8,4,2,1,128,64,32,16]
-        for i in arange(8):
-            fpr=dir_all0==dir_0[i]; dir_all[fpr]=dir_inv[i]    
-        S.dir.ravel()[sind_all]=dir_all;
+    #     #reverse dir along the shortest route 
+    #     dir_0=[128,64,32,16,8,4,2,1]; dir_inv=[8,4,2,1,128,64,32,16]
+    #     for i in arange(8):
+    #         fpr=dir_all0==dir_0[i]; dir_all[fpr]=dir_inv[i]    
+    #     S.dir.ravel()[sind_all]=dir_all;
                         
-        #to find seg_min_final and id_min_final
-        seg_min_final=seg_min.copy()
-        while True:
-            segc,iA,iB=intersect1d(seg0[fpo],seg_min_final,return_indices=True)
-            if len(segc)==0: break
-            seg_min_final[iB]=seg_min[iA]
+    #     #to find seg_min_final and id_min_final
+    #     seg_min_final=seg_min.copy()
+    #     while True:
+    #         segc,iA,iB=intersect1d(seg0[fpo],seg_min_final,return_indices=True)
+    #         if len(segc)==0: break
+    #         seg_min_final[iB]=seg_min[iA]
             
-        id_min_final=-ones(len(seg_min_final)).astype('int')
-        segc,iA,iB=intersect1d(seg0,seg_min_final,return_indices=True)
-        id_min_final[iB]=iA
+    #     id_min_final=-ones(len(seg_min_final)).astype('int')
+    #     segc,iA,iB=intersect1d(seg0,seg_min_final,return_indices=True)
+    #     id_min_final[iB]=iA
                 
-        #assign sind_segs, S.boundary 
-        for i in arange(len(fpo)):
-            S.seg.ravel()[sind_segs[fpo[i]]]=seg_min_final[i]
-            if id_min_final[i]!=-1:
-                sind_segs[id_min_final[i]]=r_[sind_segs[id_min_final[i]],sind_segs[fpo[i]]]
-                S.boundary[id_min_final[i]]=r_[S.boundary[id_min_final[i]], S.boundary[fpo[i]]]
+    #     #assign sind_segs, S.boundary 
+    #     for i in arange(len(fpo)):
+    #         S.seg.ravel()[sind_segs[fpo[i]]]=seg_min_final[i]
+    #         if id_min_final[i]!=-1:
+    #             sind_segs[id_min_final[i]]=r_[sind_segs[id_min_final[i]],sind_segs[fpo[i]]]
+    #             S.boundary[id_min_final[i]]=r_[S.boundary[id_min_final[i]], S.boundary[fpo[i]]]
             
-        #update sind0, sind_segs, S.boundary, slen
-        id_left=setdiff1d(arange(slen),fpo)
-        sind0=sind0[id_left]; slen=len(sind0)
-        sind_segs=sind_segs[id_left]
-        S.boundary=S.boundary[id_left]
+    #     #update sind0, sind_segs, S.boundary, slen
+    #     id_left=setdiff1d(arange(slen),fpo)
+    #     sind0=sind0[id_left]; slen=len(sind0)
+    #     sind_segs=sind_segs[id_left]
+    #     S.boundary=S.boundary[id_left]
     
-    S.compute_watershed()    
+    # S.compute_watershed()    
     
