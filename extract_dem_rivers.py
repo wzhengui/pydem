@@ -851,50 +851,49 @@ class dem(object):
         
         #pre-define variables       
         ds=self.info.ds; ym,xm=ds; nodata=S.info.nodata
+                
+        #this part assign dir directly if the original dir of boundary cells is not zero
+        sind0=self.info.sind_bnd_local; iy,ix=unravel_index(sind0,ds); 
+        fp=(iy>0)*(iy<(ym-1))*(ix>0)*(ix<(xm-1)); sind0=sind0[fp]
+        dem0=self.info.dem_bnd_local[fp]; dir0=self.info.dir_bnd_local[fp]; #original
+        dir=self.dir.ravel()[sind0] #at present
         
+        #exclude nodata bnd pts
+        if len(self.info.sind_bnd_nodata)!=0:
+            sind_bnd_nodata,iA,iB=intersect1d(sind0,self.info.sind_bnd_nodata,return_indices=True)
+            fp=setdiff1d(arange(len(sind0)),iA)
+            sind0=sind0[fp]; dem0=dem0[fp]; dir0=dir0[fp]; dir=dir[fp]
         
-        # #this part assign dir directly if the original dir of boundary cells is not zero
-        # sind0=self.info.sind_bnd_local; iy,ix=unravel_index(sind0,ds); 
-        # fp=(iy>0)*(iy<(ym-1))*(ix>0)*(ix<(xm-1)); sind0=sind0[fp]
-        # dem0=self.info.dem_bnd_local[fp]; dir0=self.info.dir_bnd_local[fp]; #original
-        # dir=self.dir.ravel()[sind0] #at present
+        print('---------assign dir directly if original dir is not zero------')
+        #put flow into another seg if its original dir is not zero, it doesn't form loops    
+        fpz=nonzero((dir0!=0)*(dir==0))[0]; 
+        self.dir.ravel()[sind0[fpz]]=dir0[fpz]
         
-        # #exclude nodata bnd pts
-        # if len(self.info.sind_bnd_nodata)!=0:
-        #     sind_bnd_nodata,iA,iB=intersect1d(sind0,self.info.sind_bnd_nodata,return_indices=True)
-        #     fp=setdiff1d(arange(len(sind0)),iA)
-        #     sind0=sind0[fp]; dem0=dem0[fp]; dir0=dir0[fp]; dir=dir[fp]
-        
-        # print('---------assign dir directly if original dir is not zero------')
-        # #put flow into another seg if its original dir is not zero, it doesn't form loops    
-        # fpz=nonzero((dir0!=0)*(dir==0))[0]; 
-        # self.dir.ravel()[sind0[fpz]]=dir0[fpz]
-        
-        # #excude pts that forms loops          
-        # sind_list,flag_loop=self.search_downstream(sind0[fpz],ireturn=3,msg=msg) 
-        # fpl=nonzero(flag_loop==1)[0]; sindl=sind0[fpz[fpl]]; deml=dem0[fpz[fpl]] 
-        # if len(fpl)!=0:
-        #     sind_list=array([intersect1d(sindl,i) for i in sind_list[fpl]])   
-        #     sind_all=[]; ids=[]; id1=0; id2=0;  
-        #     for i in arange(len(fpl)):            
-        #         sindi=unique(sind_list[i]); id2=id1+len(sindi)
-        #         sind_all.extend(sindi)        
-        #         ids.append(arange(id1,id2).astype('int')); id1=id1+len(sindi) 
-        #     sind_all=array(sind_all)
-        #     sindu,fpu=unique(sind_all,return_inverse=True); sindc,iA,iB=intersect1d(sindu,sindl,return_indices=True)
-        #     if not array_equal(sindu,sindc): sys.exit('sindc!=sindu') 
-        #     dem_all=deml[iB][fpu]
-        #     #assign dir=0 for the minimum depth pts
-        #     sind_min=[]
-        #     for idi in ids:
-        #         sind_min.append(sind_all[idi[nonzero(dem_all[idi]==min(dem_all[idi]))[0][0]]])
-        #     sind_min=array(sind_min)
-        #     self.dir.ravel()[sind_min]=0        
+        #excude pts that forms loops          
+        sind_list,flag_loop=self.search_downstream(sind0[fpz],ireturn=3,msg=msg) 
+        fpl=nonzero(flag_loop==1)[0]; sindl=sind0[fpz[fpl]]; deml=dem0[fpz[fpl]] 
+        if len(fpl)!=0:
+            sind_list=array([intersect1d(sindl,i) for i in sind_list[fpl]])   
+            sind_all=[]; ids=[]; id1=0; id2=0;  
+            for i in arange(len(fpl)):            
+                sindi=unique(sind_list[i]); id2=id1+len(sindi)
+                sind_all.extend(sindi)        
+                ids.append(arange(id1,id2).astype('int')); id1=id1+len(sindi) 
+            sind_all=array(sind_all)
+            sindu,fpu=unique(sind_all,return_inverse=True); sindc,iA,iB=intersect1d(sindu,sindl,return_indices=True)
+            if not array_equal(sindu,sindc): sys.exit('sindc!=sindu') 
+            dem_all=deml[iB][fpu]
+            #assign dir=0 for the minimum depth pts
+            sind_min=[]
+            for idi in ids:
+                sind_min.append(sind_all[idi[nonzero(dem_all[idi]==min(dem_all[idi]))[0][0]]])
+            sind_min=array(sind_min)
+            self.dir.ravel()[sind_min]=0        
             
-        # #if dem exists, use fill_depression directly
-        # if hasattr(self,'dem'):
-        #     self.fill_depression(method=1)   
-        #     return
+        #if dem exists, use fill_depression directly
+        if hasattr(self,'dem'):
+            self.fill_depression(method=1)   
+            return
             
         # # S.save_data('S8_m2',['dir','info'])
         # # return
@@ -2005,70 +2004,65 @@ if __name__=="__main__":
 #     sys.exit()
     
 # #------read dem---------------------------------------------------------------- 
-#     # sys.exit()
-#     S=dem(); 
-#     t0=time.time();
-#     #--------------------------------------------------------------------------
-#     # S.read_deminfo('GEBCO.asc',subdomain_size=1e6,offset=1)
-#     # # S.read_demdata()
-#     # S.read_data('S1_DEM.npz')
+    # # sys.exit()
+    # S=dem(); 
+    # t0=time.time();
+    # #--------------------------------------------------------------------------
+    # # S.read_deminfo('GEBCO.asc',subdomain_size=1e6,offset=1)
+    # # # S.read_demdata()
+    # # S.read_data('S1_DEM.npz')
   
-#     # S.read_deminfo('ne_atl_crm_v1.asc',subdomain_size=2e7,offset=1)
-#     # S.read_demdata()
-#     # S.read_data('S2_DEM.npz'); 
+    # S.read_deminfo('ne_atl_crm_v1.asc',subdomain_size=2e7,offset=1)
+    # S.read_demdata()
+    # # S.read_data('S2_DEM.npz'); 
     
-#     S.read_deminfo('13arcs/southern_louisiana_13_navd88_2010.asc',subdomain_size=2e7,offset=1)    
-#     # S.read_demdata()
+    # # S.read_deminfo('13arcs/southern_louisiana_13_navd88_2010.asc',subdomain_size=2e7,offset=1)    
+    # # S.read_demdata()
     
-#     print('-------------global domain is divided to: {} subdomains------------'.format(S.info.nsubdomain))
-#     #compute dir on each subdomain
-#     for i in arange(S.info.nsubdomain):
-#         t1=time.time();
-#         print('--------------------------------------------------------------')
-#         print('---------work on depression: subdomain {}---------------------'.format(i+1))
-#         print('--------------------------------------------------------------')
+    # print('-------------global domain is divided to: {} subdomains------------'.format(S.info.nsubdomain))
+    # #compute dir on each subdomain
+    # for i in arange(S.info.nsubdomain):
+    #     t1=time.time();
+    #     print('--------------------------------------------------------------')
+    #     print('---------work on depression: subdomain {}---------------------'.format(i+1))
+    #     print('--------------------------------------------------------------')
 
-#         Si=S.domains[i]; 
-#         if hasattr(S,'dem'):
-#             Si.read_demdata(data=S.dem)    
-#         else:
-#             Si.read_demdata()    
+    #     Si=S.domains[i]; 
+    #     if hasattr(S,'dem'):
+    #         Si.read_demdata(data=S.dem)    
+    #     else:
+    #         Si.read_demdata()    
                             
-#         Si.compute_dir();
+    #     Si.compute_dir();
         
-#         #if Si is a subdomain, save bnd info for collecting
-#         if S.info.nsubdomain>1:            
-#             Si.collapse_subdomain();              
-#             Si.change_bnd_dir()     
+    #     #if Si is a subdomain, save bnd info for collecting
+    #     if S.info.nsubdomain>1:            
+    #         Si.collapse_subdomain();              
+    #         Si.change_bnd_dir()     
                                
-#         #resolve flat and fill depression
-#         Si.fill_depression(level_max=100,method=0)
-#         delattr(Si,'dem');
-#         print('time={:.1f}s, total time={:.1f}s'.format(time.time()-t1,time.time()-t0))
+    #     #resolve flat and fill depression
+    #     Si.fill_depression(level_max=100,method=0)
+    #     delattr(Si,'dem');
+    #     print('time={:.1f}s, total time={:.1f}s'.format(time.time()-t1,time.time()-t0))
                               
-#     #collect dir
-#     S.collect_subdomain_data(name='dir',outname='dir')
-#     S.info.nodata=Si.info.nodata
+    # #collect dir
+    # S.collect_subdomain_data(name='dir',outname='dir')
+    # S.info.nodata=Si.info.nodata
     
-#     # S.save_data('S8_m',['dir','info'])
+    # # S.save_data('S8_m',['dir','info'])
     
-#     if S.info.nsubdomain>1:
-#         #global domain
-#         S.fill_depression_global() 
+    # if S.info.nsubdomain>1:
+    #     #global domain
+    #     S.fill_depression_global() 
     
-#     S.compute_watershed()
-#     S.compute_river(arange(1,1e7),acc_limit=1e4)
-#     S.write_shapefile('rivers','C1_2_rivers')
+    # S.compute_watershed()
+    # S.compute_river(arange(1,1e7),acc_limit=1e4)
+    # S.write_shapefile('rivers','C1_22_rivers')
     
-#     dt=time.time()-t0
-#     print('total time={:.1f}s'.format(time.time()-t0))
+    # dt=time.time()-t0
+    # print('total time={:.1f}s'.format(time.time()-t0))
            
     
-        
-    
-    
-    
- 
     
 #------write shapefile---------------------------------------------------------
     # acc_limit=1e4; seg=arange(1,1e5)
