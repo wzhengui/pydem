@@ -1990,7 +1990,147 @@ class dem(object):
                          
 if __name__=="__main__":    
     close('all')
-    
+
+#------------------------------------------------------------------------------
+#---------------read multiple dem files----------------------------------------
+#------------------------------------------------------------------------------
+    #file names
+    ids=[*arange(4,16),*arange(30,36),*arange(40,46)]; 
+    ids=['{:02}'.format(i) for i in ids]; ids.extend(['010','011'])
+    fnames=['Gulf_1/gulf_1_dem_usgs_{}.asc'.format(i) for i in ids]
+
+    #read global information of files 
+    headers0=[]
+    for fname in fnames:
+        #read header
+        if fname.endswith('.asc'):
+            with open(fname,'r') as fid:
+                xm=int(fid.readline().split()[1])
+                ym=int(fid.readline().split()[1])
+                xll=float(fid.readline().split()[1])
+                yll=float(fid.readline().split()[1])
+                dxy=float(fid.readline().split()[1])
+                nval=fid.readline().split()[1]
+                if nval.lower() in ('nan','-nan'):
+                    nodata=nan
+                else:
+                    nodata=float(nval)
+        
+        #change yll to upper left corner
+        yll=yll+(ym-1)*dxy
+                
+        #process info
+        headers0.append([ym,xm,yll,xll,dxy,nodata,yll-(ym-1)*dxy,xll+(xm-1)*dxy])
+    S=npz_data(); S.nf=len(ids); S.ids=array(ids); S.fnames=array(fnames); S.headers0=array(headers0)
+
+    #find neighboring domains
+    nbs=[]; slims=[]
+    for i in arange(S.nf):
+        y2,x1,dxy,y1,x2=S.headers0[i][array([2,3,4,6,7])]; 
+
+        #neighboring domain
+        nb=[]  
+        cdxy=1.5*dxy; cx1=x1-cdxy; cx2=x2+cdxy; cy1=y1-cdxy; cy2=y2+cdxy  
+        for m in arange(S.nf):
+            if m==i: continue
+            sy2,sx1,sy1,sx2=S.headers0[m][array([2,3,6,7])]
+
+            fx10=(sx1>x1)*(sx1<x2);fx20=(sx2>x1)*(sx2<x2);fy10=(sy1>y1)*(sy1<y2);fy20=(sy2>y1)*(sy2<y2)
+            fx1=(sx1>cx1)*(sx1<cx2);fx2=(sx2>cx1)*(sx2<cx2);fy1=(sy1>cy1)*(sy1<cy2);fy2=(sy2>cy1)*(sy2<cy2)
+
+            #if no overlap, skip
+            if not (fx1|fx2)*(fy1|fy2): continue
+            if (sum([fx1*fy1,fx2*fy1,fx1*fy2,fx2*fy2])<2)*(sum([fx10*fy10,fx20*fy10,fx10*fy20,fx20*fy20])==0): continue
+           
+            #add overlap info 
+            nb.append(m) 
+        nbs.append(nb); 
+          
+        #find which domain corner resides 
+        snb=[None,None,None,None]
+        xc=[x1,x2,x2,x1]; yc=[y1,y1,y2,y2] 
+        for m in arange(len(nb)): 
+            if int(S.ids[i])>int(S.ids[nb[m]]): continue 
+            sy2,sx1,sy1,sx2=S.headers0[nb[m]][array([2,3,6,7])]
+            for k in arange(4):
+                xi=xc[k]; yi=yc[k]
+                if (xi>sx1)*(xi<sx2)*(yi>sy1)*(yi<sy2): snb[k]=nb[m]
+
+        #calculate new xy limit. There are eight situations
+        slim=[-99999,99999,-99999,99999] 
+        #bottom side
+        if snb[0]!=None and snb[1]!=None: 
+            slim[2]=max(slim[2],S.headers0[snb[0]][2],S.headers0[snb[1]][2])
+
+        #right side
+        if snb[1]!=None and snb[2]!=None: 
+            slim[1]=min(slim[1],S.headers0[snb[1]][3],S.headers0[snb[2]][3])
+
+        #upper side
+        if snb[2]!=None and snb[3]!=None: 
+            slim[3]=min(slim[3],S.headers0[snb[2]][6],S.headers0[snb[3]][6])
+
+        #left side
+        if snb[0]!=None and snb[3]!=None: 
+            slim[0]=max(slim[0],S.headers0[snb[0]][7],S.headers0[snb[3]][7])
+       
+        #this part needed to be add manually if results are not correct   
+        if sum(array(snb)!=None)==1:
+           #lower left corner
+           if snb[0]!=None:
+              slim[2]=max(slim[2],S.headers0[snb[0]][2])
+
+           #lower right corner
+           if snb[1]!=None:
+              slim[1]=min(slim[1],S.headers0[snb[1]][3])
+
+           #upper right corner
+           if snb[2]!=None:
+              if S.ids[i] in ['08',]:
+                slim[3]=min(slim[3],S.headers0[snb[2]][6])
+              else:
+                slim[1]=min(slim[1],S.headers0[snb[2]][3])
+
+           #upper left corner
+           if snb[3]!=None:
+              slim[3]=min(slim[3],S.headers0[snb[3]][6])
+        slims.append(slim)
+        
+    S.nbs=array(nbs); slims=array(slims) 
+
+    #update new xy limits
+    skiprows=[]; skipcols=[]; headers=[]
+    for i in arange(S.nf):   
+        ym,xm,yll,xll,dxyi,nodata=S.headers0[i][:6]
+        xi=xll+dxy*arange(xm); xind=nonzero((xi>slims[i][0])*(xi<slims[i][1]))[0]
+        yi=yll-dxy*arange(ym); yind=nonzero((yi>slims[i][2])*(yi<slims[i][3]))[0]
+        ix1=xind.min(); ix2=xind.max(); iy1=yind.min(); iy2=yind.max();  
+        ym=(iy2-iy1+1); xm=(ix2-ix1+1); yll=yll-iy1*dxy; xll=xll+ix1*dxy
+        headers.append([ym,xm,yll,xll,dxy,nodata,yll-(ym-1)*dxy,xll+(xm-1)*dxy])
+        skiprows.append(iy1); skipcols.append(ix1)
+    S.headers=array(headers); S.skiprows=array(skiprows); S.skipcols=array(skipcols)
+          
+    #plot domains
+    colors=['r','g','b','k','m']
+    subplot(2,1,1)
+    for i in arange(S.nf):
+        y2,x1,y1,x2=S.headers0[i][array([2,3,6,7])]
+        xi=array([x1,x2,x2,x1,x1]); yi=array([y1,y1,y2,y2,y1])
+        plot(xi,yi,'-',color=colors[mod(i,5)],alpha=0.6) 
+        text((x1+x2)/2,(y1+y2)/2,S.ids[i],color=colors[mod(i,5)],alpha=0.6)
+
+    subplot(2,1,2)
+    for i in arange(S.nf):
+        y2,x1,y1,x2=S.headers[i][array([2,3,6,7])]
+        xi=array([x1,x2,x2,x1,x1]); yi=array([y1,y1,y2,y2,y1])
+        plot(xi,yi,'-',color=colors[mod(i,5)],alpha=0.6) 
+        text((x1+x2)/2,(y1+y2)/2,S.ids[i],color=colors[mod(i,5)],alpha=0.6)
+    savefig('domain_1')
+        
+    show()    
+       
+
+
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------    
