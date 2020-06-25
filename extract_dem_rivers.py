@@ -305,7 +305,7 @@ class dem(object):
                 sdata=dem(); sdata.info=sinfo
                 self.domains.append(sdata) 
     
-    def read_files(self,names,ids):
+    def read_files(self,names,ids,plot_domain=False):
         #read information about multiple dem files, and remove the overlap zone
         
         #read global information of files 
@@ -429,6 +429,30 @@ class dem(object):
             header.skipcols=skipcols[i]
             header.skiprows=skiprows[i]
             self.headers.append(header)                    
+
+        #plot domains before and after removing overlapping zone
+        if plot_domain:
+           colors=['r','g','b','k','m']
+           figure(figsize=[12,10])
+           subplot(2,1,1)
+           for i in arange(nfile):
+               x1,x2,y1,y2=diminfo0[i][:4] 
+               xi=array([x1,x2,x2,x1,x1]); yi=array([y1,y1,y2,y2,y1])
+               plot(xi,yi,'-',color=colors[mod(i,5)],alpha=0.6) 
+               text((x1+x2)/2,(y1+y2)/2,ids[i],color=colors[mod(i,5)],alpha=0.6)
+           title('domains of each dem files: original')
+     
+           subplot(2,1,2)
+           for i in arange(nfile):
+               x1,x2,y1,y2=diminfo[i][:4] 
+               xi=array([x1,x2,x2,x1,x1]); yi=array([y1,y1,y2,y2,y1])
+               xi=array([x1,x2,x2,x1,x1]); yi=array([y1,y1,y2,y2,y1])
+               plot(xi,yi,'-',color=colors[mod(i,5)],alpha=0.6) 
+               text((x1+x2)/2,(y1+y2)/2,ids[i],color=colors[mod(i,5)],alpha=0.6)
+           title('domains of each dem files: removing overlapping zone')
+           gcf().tight_layout()
+           savefig('dem_domains_overlap')
+           close()
         
     def compute_river(self,seg=None,sind=None,acc_limit=1e4,nodata=None,apply_mask=False,msg=False):   
         '''
@@ -2129,7 +2153,7 @@ if __name__=="__main__":
     ids=['{:02}'.format(i) for i in ids]; ids.extend(['010','011'])
     names=['Gulf_1/gulf_1_dem_usgs_{}.asc'.format(i) for i in ids]
     
-    S=dem(); S.read_files(names,ids)
+    S=dem(); S.read_files(names,ids,plot_domain=True)
 
     # #read global information of files 
     # diminfo0=[]
