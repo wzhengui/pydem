@@ -330,7 +330,6 @@ class dem(object):
                     
             #process info
             diminfo0.append([xll,xll+(xm-1)*dxy,yll-(ym-1)*dxy,yll,dxy,xm,ym,nodata])
-        # S=npz_data(); S.nf=len(ids); S.ids=array(ids); S.names=array(names); S.diminfo0=diminfo0
     
         #find neighboring domains
         nbs=[]; slims=[]
@@ -340,7 +339,7 @@ class dem(object):
             #neighboring domain
             nb=[]  
             cdxy=1.5*dxy; cx1=x1-cdxy; cx2=x2+cdxy; cy1=y1-cdxy; cy2=y2+cdxy  
-            for m in arange(S.nf):
+            for m in arange(nfile):
                 if m==i: continue
                 sx1,sx2,sy1,sy2=diminfo0[m][:4]
     
@@ -355,11 +354,14 @@ class dem(object):
                 nb.append(m) 
             nbs.append(nb); 
               
-            #find which domain corner resides 
+            #find which domain corner resides
+            #****************************************************************************
+            #this part need mannaul input, which dem file matters in the overlapping zone
+            #****************************************************************************
             snb=[None,None,None,None]
             xc=[x1,x2,x2,x1]; yc=[y1,y1,y2,y2] 
             for m in arange(len(nb)): 
-                if int(S.ids[i])>int(S.ids[nb[m]]): continue 
+                if int(ids[i])>int(ids[nb[m]]): continue 
                 sx1,sx2,sy1,sy2=diminfo0[nb[m]][:4]
                 for k in arange(4):
                     xi=xc[k]; yi=yc[k]
@@ -395,7 +397,7 @@ class dem(object):
     
                #upper right corner
                if snb[2]!=None:
-                  if S.ids[i] in ['08',]:
+                  if ids[i] in ['08',]:
                     slim[3]=min(slim[3],diminfo0[snb[2]][2])
                   else:
                     slim[1]=min(slim[1],diminfo0[snb[2]][0])
@@ -403,33 +405,30 @@ class dem(object):
                #upper left corner
                if snb[3]!=None:
                   slim[3]=min(slim[3],diminfo0[snb[3]][2])
-    
             slims.append(slim)
-        # S.nbs=array(nbs); slims=array(slims) 
     
         #update new xy limits
         skiprows=[]; skipcols=[]; diminfo=[]
         for i in arange(nfile):   
-            x1,x2,y1,y2,dxy,xm,ym,nodata=S.diminfo0[i][:8]
+            x1,x2,y1,y2,dxy,xm,ym,nodata=diminfo0[i][:8]
             xi=x1+dxy*arange(xm); xind=nonzero((xi>slims[i][0])*(xi<slims[i][1]))[0]
             yi=y2-dxy*arange(ym); yind=nonzero((yi>slims[i][2])*(yi<slims[i][3]))[0]
             ix1=xind.min(); ix2=xind.max(); iy1=yind.min(); iy2=yind.max();  
             ym=(iy2-iy1+1); xm=(ix2-ix1+1); y2=y2-iy1*dxy; x1=x1+ix1*dxy
             diminfo.append([x1,x1+(xm-1)*dxy,y2-(ym-1)*dxy,y2,dxy,xm,ym,nodata])
             skiprows.append(iy1); skipcols.append(ix1)
-        # S.diminfo=diminfo; S.skiprows=array(skiprows); S.skipcols=array(skipcols)
     
         #reorgnize info
         self.headers=[]
         for i in arange(nfile):
-            Si=npz_data()
-            Si.diminfo=S.diminfo[i]
-            Si.id=S.ids[i]
-            Si.name=S.names[i]
-            Si.nbs=S.nbs[i]
-            Si.skipcols=S.skipcols[i]
-            Si.skiprows=S.skiprows[i]
-            self.headers.append(Si)                    
+            header=npz_data()
+            header.diminfo=diminfo[i]
+            header.id=ids[i]
+            header.name=names[i]
+            header.nbs=nbs[i]
+            header.skipcols=skipcols[i]
+            header.skiprows=skiprows[i]
+            self.headers.append(header)                    
         
     def compute_river(self,seg=None,sind=None,acc_limit=1e4,nodata=None,apply_mask=False,msg=False):   
         '''
