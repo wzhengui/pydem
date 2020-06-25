@@ -304,7 +304,132 @@ class dem(object):
                 #save info                                
                 sdata=dem(); sdata.info=sinfo
                 self.domains.append(sdata) 
-                
+    
+    def read_files(self,names,ids):
+        #read information about multiple dem files, and remove the overlap zone
+        
+        #read global information of files 
+        diminfo0=[]; nfile=len(names)
+        for name in names:
+            #read header
+            if name.endswith('.asc'):
+                with open(name,'r') as fid:
+                    xm=int(fid.readline().split()[1])
+                    ym=int(fid.readline().split()[1])
+                    xll=float(fid.readline().split()[1])
+                    yll=float(fid.readline().split()[1])
+                    dxy=float(fid.readline().split()[1])
+                    nval=fid.readline().split()[1]
+                    if nval.lower() in ('nan','-nan'):
+                        nodata=nan
+                    else:
+                        nodata=float(nval)
+            
+            #change yll to upper left corner
+            yll=yll+(ym-1)*dxy
+                    
+            #process info
+            diminfo0.append([xll,xll+(xm-1)*dxy,yll-(ym-1)*dxy,yll,dxy,xm,ym,nodata])
+        # S=npz_data(); S.nf=len(ids); S.ids=array(ids); S.names=array(names); S.diminfo0=diminfo0
+    
+        #find neighboring domains
+        nbs=[]; slims=[]
+        for i in arange(nfile):
+            x1,x2,y1,y2,dxy=diminfo0[i][:5] 
+    
+            #neighboring domain
+            nb=[]  
+            cdxy=1.5*dxy; cx1=x1-cdxy; cx2=x2+cdxy; cy1=y1-cdxy; cy2=y2+cdxy  
+            for m in arange(S.nf):
+                if m==i: continue
+                sx1,sx2,sy1,sy2=diminfo0[m][:4]
+    
+                fx10=(sx1>x1)*(sx1<x2);fx20=(sx2>x1)*(sx2<x2);fy10=(sy1>y1)*(sy1<y2);fy20=(sy2>y1)*(sy2<y2)
+                fx1=(sx1>cx1)*(sx1<cx2);fx2=(sx2>cx1)*(sx2<cx2);fy1=(sy1>cy1)*(sy1<cy2);fy2=(sy2>cy1)*(sy2<cy2)
+    
+                #if no overlap, skip
+                if not (fx1|fx2)*(fy1|fy2): continue
+                if (sum([fx1*fy1,fx2*fy1,fx1*fy2,fx2*fy2])<2)*(sum([fx10*fy10,fx20*fy10,fx10*fy20,fx20*fy20])==0): continue
+               
+                #add overlap info 
+                nb.append(m) 
+            nbs.append(nb); 
+              
+            #find which domain corner resides 
+            snb=[None,None,None,None]
+            xc=[x1,x2,x2,x1]; yc=[y1,y1,y2,y2] 
+            for m in arange(len(nb)): 
+                if int(S.ids[i])>int(S.ids[nb[m]]): continue 
+                sx1,sx2,sy1,sy2=diminfo0[nb[m]][:4]
+                for k in arange(4):
+                    xi=xc[k]; yi=yc[k]
+                    if (xi>sx1)*(xi<sx2)*(yi>sy1)*(yi<sy2): snb[k]=nb[m]
+    
+            #calculate new xy limit. There are eight situations
+            slim=[-99999,99999,-99999,99999] 
+            #bottom side
+            if snb[0]!=None and snb[1]!=None: 
+                slim[2]=max(slim[2],diminfo0[snb[0]][3],diminfo0[snb[1]][3])
+    
+            #right side
+            if snb[1]!=None and snb[2]!=None: 
+                slim[1]=min(slim[1],diminfo0[snb[1]][0],diminfo0[snb[2]][0])
+    
+            #upper side
+            if snb[2]!=None and snb[3]!=None: 
+                slim[3]=min(slim[3],diminfo0[snb[2]][2],diminfo0[snb[3]][2])
+    
+            #left side
+            if snb[0]!=None and snb[3]!=None: 
+                slim[0]=max(slim[0],diminfo0[snb[0]][1],diminfo0[snb[3]][1])
+           
+            #this part needed to be add manually if results are not correct   
+            if sum(array(snb)!=None)==1:
+               #lower left corner
+               if snb[0]!=None:
+                  slim[2]=max(slim[2],diminfo0[snb[0]][3])
+    
+               #lower right corner
+               if snb[1]!=None:
+                  slim[1]=min(slim[1],diminfo0[snb[1]][0])
+    
+               #upper right corner
+               if snb[2]!=None:
+                  if S.ids[i] in ['08',]:
+                    slim[3]=min(slim[3],diminfo0[snb[2]][2])
+                  else:
+                    slim[1]=min(slim[1],diminfo0[snb[2]][0])
+    
+               #upper left corner
+               if snb[3]!=None:
+                  slim[3]=min(slim[3],diminfo0[snb[3]][2])
+    
+            slims.append(slim)
+        # S.nbs=array(nbs); slims=array(slims) 
+    
+        #update new xy limits
+        skiprows=[]; skipcols=[]; diminfo=[]
+        for i in arange(nfile):   
+            x1,x2,y1,y2,dxy,xm,ym,nodata=S.diminfo0[i][:8]
+            xi=x1+dxy*arange(xm); xind=nonzero((xi>slims[i][0])*(xi<slims[i][1]))[0]
+            yi=y2-dxy*arange(ym); yind=nonzero((yi>slims[i][2])*(yi<slims[i][3]))[0]
+            ix1=xind.min(); ix2=xind.max(); iy1=yind.min(); iy2=yind.max();  
+            ym=(iy2-iy1+1); xm=(ix2-ix1+1); y2=y2-iy1*dxy; x1=x1+ix1*dxy
+            diminfo.append([x1,x1+(xm-1)*dxy,y2-(ym-1)*dxy,y2,dxy,xm,ym,nodata])
+            skiprows.append(iy1); skipcols.append(ix1)
+        # S.diminfo=diminfo; S.skiprows=array(skiprows); S.skipcols=array(skipcols)
+    
+        #reorgnize info
+        self.headers=[]
+        for i in arange(nfile):
+            Si=npz_data()
+            Si.diminfo=S.diminfo[i]
+            Si.id=S.ids[i]
+            Si.name=S.names[i]
+            Si.nbs=S.nbs[i]
+            Si.skipcols=S.skipcols[i]
+            Si.skiprows=S.skiprows[i]
+            self.headers.append(Si)                    
         
     def compute_river(self,seg=None,sind=None,acc_limit=1e4,nodata=None,apply_mask=False,msg=False):   
         '''
@@ -2004,149 +2129,151 @@ if __name__=="__main__":
     ids=[*arange(4,16),*arange(30,36),*arange(40,46)]; 
     ids=['{:02}'.format(i) for i in ids]; ids.extend(['010','011'])
     names=['Gulf_1/gulf_1_dem_usgs_{}.asc'.format(i) for i in ids]
+    
+    S=dem(); S.read_files(names,ids)
 
-    #read global information of files 
-    diminfo0=[]
-    for name in names:
-        #read header
-        if name.endswith('.asc'):
-            with open(name,'r') as fid:
-                xm=int(fid.readline().split()[1])
-                ym=int(fid.readline().split()[1])
-                xll=float(fid.readline().split()[1])
-                yll=float(fid.readline().split()[1])
-                dxy=float(fid.readline().split()[1])
-                nval=fid.readline().split()[1]
-                if nval.lower() in ('nan','-nan'):
-                    nodata=nan
-                else:
-                    nodata=float(nval)
+    # #read global information of files 
+    # diminfo0=[]
+    # for name in names:
+    #     #read header
+    #     if name.endswith('.asc'):
+    #         with open(name,'r') as fid:
+    #             xm=int(fid.readline().split()[1])
+    #             ym=int(fid.readline().split()[1])
+    #             xll=float(fid.readline().split()[1])
+    #             yll=float(fid.readline().split()[1])
+    #             dxy=float(fid.readline().split()[1])
+    #             nval=fid.readline().split()[1]
+    #             if nval.lower() in ('nan','-nan'):
+    #                 nodata=nan
+    #             else:
+    #                 nodata=float(nval)
         
-        #change yll to upper left corner
-        yll=yll+(ym-1)*dxy
+    #     #change yll to upper left corner
+    #     yll=yll+(ym-1)*dxy
                 
-        #process info
-        diminfo0.append([xll,xll+(xm-1)*dxy,yll-(ym-1)*dxy,yll,dxy,xm,ym,nodata])
-    S=npz_data(); S.nf=len(ids); S.ids=array(ids); S.names=array(names); S.diminfo0=diminfo0
+    #     #process info
+    #     diminfo0.append([xll,xll+(xm-1)*dxy,yll-(ym-1)*dxy,yll,dxy,xm,ym,nodata])
+    # S=npz_data(); S.nf=len(ids); S.ids=array(ids); S.names=array(names); S.diminfo0=diminfo0
 
-    #find neighboring domains
-    nbs=[]; slims=[]
-    for i in arange(S.nf):
-        x1,x2,y1,y2,dxy=S.diminfo0[i][:5] 
+    # #find neighboring domains
+    # nbs=[]; slims=[]
+    # for i in arange(S.nf):
+    #     x1,x2,y1,y2,dxy=S.diminfo0[i][:5] 
 
-        #neighboring domain
-        nb=[]  
-        cdxy=1.5*dxy; cx1=x1-cdxy; cx2=x2+cdxy; cy1=y1-cdxy; cy2=y2+cdxy  
-        for m in arange(S.nf):
-            if m==i: continue
-            sx1,sx2,sy1,sy2=S.diminfo0[m][:4]
+    #     #neighboring domain
+    #     nb=[]  
+    #     cdxy=1.5*dxy; cx1=x1-cdxy; cx2=x2+cdxy; cy1=y1-cdxy; cy2=y2+cdxy  
+    #     for m in arange(S.nf):
+    #         if m==i: continue
+    #         sx1,sx2,sy1,sy2=S.diminfo0[m][:4]
 
-            fx10=(sx1>x1)*(sx1<x2);fx20=(sx2>x1)*(sx2<x2);fy10=(sy1>y1)*(sy1<y2);fy20=(sy2>y1)*(sy2<y2)
-            fx1=(sx1>cx1)*(sx1<cx2);fx2=(sx2>cx1)*(sx2<cx2);fy1=(sy1>cy1)*(sy1<cy2);fy2=(sy2>cy1)*(sy2<cy2)
+    #         fx10=(sx1>x1)*(sx1<x2);fx20=(sx2>x1)*(sx2<x2);fy10=(sy1>y1)*(sy1<y2);fy20=(sy2>y1)*(sy2<y2)
+    #         fx1=(sx1>cx1)*(sx1<cx2);fx2=(sx2>cx1)*(sx2<cx2);fy1=(sy1>cy1)*(sy1<cy2);fy2=(sy2>cy1)*(sy2<cy2)
 
-            #if no overlap, skip
-            if not (fx1|fx2)*(fy1|fy2): continue
-            if (sum([fx1*fy1,fx2*fy1,fx1*fy2,fx2*fy2])<2)*(sum([fx10*fy10,fx20*fy10,fx10*fy20,fx20*fy20])==0): continue
+    #         #if no overlap, skip
+    #         if not (fx1|fx2)*(fy1|fy2): continue
+    #         if (sum([fx1*fy1,fx2*fy1,fx1*fy2,fx2*fy2])<2)*(sum([fx10*fy10,fx20*fy10,fx10*fy20,fx20*fy20])==0): continue
            
-            #add overlap info 
-            nb.append(m) 
-        nbs.append(nb); 
+    #         #add overlap info 
+    #         nb.append(m) 
+    #     nbs.append(nb); 
           
-        #find which domain corner resides 
-        snb=[None,None,None,None]
-        xc=[x1,x2,x2,x1]; yc=[y1,y1,y2,y2] 
-        for m in arange(len(nb)): 
-            if int(S.ids[i])>int(S.ids[nb[m]]): continue 
-            sx1,sx2,sy1,sy2=S.diminfo0[nb[m]][:4]
-            for k in arange(4):
-                xi=xc[k]; yi=yc[k]
-                if (xi>sx1)*(xi<sx2)*(yi>sy1)*(yi<sy2): snb[k]=nb[m]
+    #     #find which domain corner resides 
+    #     snb=[None,None,None,None]
+    #     xc=[x1,x2,x2,x1]; yc=[y1,y1,y2,y2] 
+    #     for m in arange(len(nb)): 
+    #         if int(S.ids[i])>int(S.ids[nb[m]]): continue 
+    #         sx1,sx2,sy1,sy2=S.diminfo0[nb[m]][:4]
+    #         for k in arange(4):
+    #             xi=xc[k]; yi=yc[k]
+    #             if (xi>sx1)*(xi<sx2)*(yi>sy1)*(yi<sy2): snb[k]=nb[m]
 
-        #calculate new xy limit. There are eight situations
-        slim=[-99999,99999,-99999,99999] 
-        #bottom side
-        if snb[0]!=None and snb[1]!=None: 
-            slim[2]=max(slim[2],S.diminfo0[snb[0]][3],S.diminfo0[snb[1]][3])
+    #     #calculate new xy limit. There are eight situations
+    #     slim=[-99999,99999,-99999,99999] 
+    #     #bottom side
+    #     if snb[0]!=None and snb[1]!=None: 
+    #         slim[2]=max(slim[2],S.diminfo0[snb[0]][3],S.diminfo0[snb[1]][3])
 
-        #right side
-        if snb[1]!=None and snb[2]!=None: 
-            slim[1]=min(slim[1],S.diminfo0[snb[1]][0],S.diminfo0[snb[2]][0])
+    #     #right side
+    #     if snb[1]!=None and snb[2]!=None: 
+    #         slim[1]=min(slim[1],S.diminfo0[snb[1]][0],S.diminfo0[snb[2]][0])
 
-        #upper side
-        if snb[2]!=None and snb[3]!=None: 
-            slim[3]=min(slim[3],S.diminfo0[snb[2]][2],S.diminfo0[snb[3]][2])
+    #     #upper side
+    #     if snb[2]!=None and snb[3]!=None: 
+    #         slim[3]=min(slim[3],S.diminfo0[snb[2]][2],S.diminfo0[snb[3]][2])
 
-        #left side
-        if snb[0]!=None and snb[3]!=None: 
-            slim[0]=max(slim[0],S.diminfo0[snb[0]][1],S.diminfo0[snb[3]][1])
+    #     #left side
+    #     if snb[0]!=None and snb[3]!=None: 
+    #         slim[0]=max(slim[0],S.diminfo0[snb[0]][1],S.diminfo0[snb[3]][1])
        
-        #this part needed to be add manually if results are not correct   
-        if sum(array(snb)!=None)==1:
-           #lower left corner
-           if snb[0]!=None:
-              slim[2]=max(slim[2],S.diminfo0[snb[0]][3])
+    #     #this part needed to be add manually if results are not correct   
+    #     if sum(array(snb)!=None)==1:
+    #        #lower left corner
+    #        if snb[0]!=None:
+    #           slim[2]=max(slim[2],S.diminfo0[snb[0]][3])
 
-           #lower right corner
-           if snb[1]!=None:
-              slim[1]=min(slim[1],S.diminfo0[snb[1]][0])
+    #        #lower right corner
+    #        if snb[1]!=None:
+    #           slim[1]=min(slim[1],S.diminfo0[snb[1]][0])
 
-           #upper right corner
-           if snb[2]!=None:
-              if S.ids[i] in ['08',]:
-                slim[3]=min(slim[3],S.diminfo0[snb[2]][2])
-              else:
-                slim[1]=min(slim[1],S.diminfo0[snb[2]][0])
+    #        #upper right corner
+    #        if snb[2]!=None:
+    #           if S.ids[i] in ['08',]:
+    #             slim[3]=min(slim[3],S.diminfo0[snb[2]][2])
+    #           else:
+    #             slim[1]=min(slim[1],S.diminfo0[snb[2]][0])
 
-           #upper left corner
-           if snb[3]!=None:
-              slim[3]=min(slim[3],S.diminfo0[snb[3]][2])
+    #        #upper left corner
+    #        if snb[3]!=None:
+    #           slim[3]=min(slim[3],S.diminfo0[snb[3]][2])
 
-        slims.append(slim)
-    S.nbs=array(nbs); slims=array(slims) 
+    #     slims.append(slim)
+    # S.nbs=array(nbs); slims=array(slims) 
 
-    #update new xy limits
-    skiprows=[]; skipcols=[]; diminfo=[]
-    for i in arange(S.nf):   
-        x1,x2,y1,y2,dxy,xm,ym,nodata=S.diminfo0[i][:8]
-        xi=x1+dxy*arange(xm); xind=nonzero((xi>slims[i][0])*(xi<slims[i][1]))[0]
-        yi=y2-dxy*arange(ym); yind=nonzero((yi>slims[i][2])*(yi<slims[i][3]))[0]
-        ix1=xind.min(); ix2=xind.max(); iy1=yind.min(); iy2=yind.max();  
-        ym=(iy2-iy1+1); xm=(ix2-ix1+1); y2=y2-iy1*dxy; x1=x1+ix1*dxy
-        diminfo.append([x1,x1+(xm-1)*dxy,y2-(ym-1)*dxy,y2,dxy,xm,ym,nodata])
-        skiprows.append(iy1); skipcols.append(ix1)
-    S.diminfo=diminfo; S.skiprows=array(skiprows); S.skipcols=array(skipcols)
+    # #update new xy limits
+    # skiprows=[]; skipcols=[]; diminfo=[]
+    # for i in arange(S.nf):   
+    #     x1,x2,y1,y2,dxy,xm,ym,nodata=S.diminfo0[i][:8]
+    #     xi=x1+dxy*arange(xm); xind=nonzero((xi>slims[i][0])*(xi<slims[i][1]))[0]
+    #     yi=y2-dxy*arange(ym); yind=nonzero((yi>slims[i][2])*(yi<slims[i][3]))[0]
+    #     ix1=xind.min(); ix2=xind.max(); iy1=yind.min(); iy2=yind.max();  
+    #     ym=(iy2-iy1+1); xm=(ix2-ix1+1); y2=y2-iy1*dxy; x1=x1+ix1*dxy
+    #     diminfo.append([x1,x1+(xm-1)*dxy,y2-(ym-1)*dxy,y2,dxy,xm,ym,nodata])
+    #     skiprows.append(iy1); skipcols.append(ix1)
+    # S.diminfo=diminfo; S.skiprows=array(skiprows); S.skipcols=array(skipcols)
 
-    #reorgnize info
-    S.headers=[]
-    for i in arange(S.nf):
-        Si=npz_data()
-        Si.diminfo=S.diminfo[i]
-        Si.id=S.ids[i]
-        Si.name=S.names[i]
-        Si.nbs=S.nbs[i]
-        Si.skipcols=S.skipcols[i]
-        Si.skiprows=S.skiprows[i]
-        S.headers.append(Si)
+    # #reorgnize info
+    # S.headers=[]
+    # for i in arange(S.nf):
+    #     Si=npz_data()
+    #     Si.diminfo=S.diminfo[i]
+    #     Si.id=S.ids[i]
+    #     Si.name=S.names[i]
+    #     Si.nbs=S.nbs[i]
+    #     Si.skipcols=S.skipcols[i]
+    #     Si.skiprows=S.skiprows[i]
+    #     S.headers.append(Si)
 
-    #plot domains
-    colors=['r','g','b','k','m']
-    subplot(2,1,1)
-    for i in arange(S.nf):
-        x1,x2,y1,y2=S.diminfo0[i][:4] 
-        xi=array([x1,x2,x2,x1,x1]); yi=array([y1,y1,y2,y2,y1])
-        plot(xi,yi,'-',color=colors[mod(i,5)],alpha=0.6) 
-        text((x1+x2)/2,(y1+y2)/2,S.ids[i],color=colors[mod(i,5)],alpha=0.6)
+    # #plot domains
+    # colors=['r','g','b','k','m']
+    # subplot(2,1,1)
+    # for i in arange(S.nf):
+    #     x1,x2,y1,y2=S.diminfo0[i][:4] 
+    #     xi=array([x1,x2,x2,x1,x1]); yi=array([y1,y1,y2,y2,y1])
+    #     plot(xi,yi,'-',color=colors[mod(i,5)],alpha=0.6) 
+    #     text((x1+x2)/2,(y1+y2)/2,S.ids[i],color=colors[mod(i,5)],alpha=0.6)
 
-    subplot(2,1,2)
-    for i in arange(S.nf):
-        x1,x2,y1,y2=S.diminfo[i][:4] 
-        xi=array([x1,x2,x2,x1,x1]); yi=array([y1,y1,y2,y2,y1])
-        xi=array([x1,x2,x2,x1,x1]); yi=array([y1,y1,y2,y2,y1])
-        plot(xi,yi,'-',color=colors[mod(i,5)],alpha=0.6) 
-        text((x1+x2)/2,(y1+y2)/2,S.ids[i],color=colors[mod(i,5)],alpha=0.6)
-    savefig('domain_1')
+    # subplot(2,1,2)
+    # for i in arange(S.nf):
+    #     x1,x2,y1,y2=S.diminfo[i][:4] 
+    #     xi=array([x1,x2,x2,x1,x1]); yi=array([y1,y1,y2,y2,y1])
+    #     xi=array([x1,x2,x2,x1,x1]); yi=array([y1,y1,y2,y2,y1])
+    #     plot(xi,yi,'-',color=colors[mod(i,5)],alpha=0.6) 
+    #     text((x1+x2)/2,(y1+y2)/2,S.ids[i],color=colors[mod(i,5)],alpha=0.6)
+    # savefig('domain_1')
         
-    show()    
+    # show()    
        
 
 
