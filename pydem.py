@@ -1394,8 +1394,11 @@ class dem(object):
         #find the high edges
         fp=dir_flat0==0; sind_high=self.search_flat(sind_flat[fp],ireturn=2,zlimit=zlimit); 
                 
-        #initialize new dem, and assing dem begining from high edges        
-        dem_high=self.search_flat(sind_high,ireturn=4,zlimit=zlimit)[sind_flat]        
+        #initialize new dem, and assing dem begining from high edges
+        if len(sind_high)!=0:        
+            dem_high=self.search_flat(sind_high,ireturn=4,zlimit=zlimit)[sind_flat]        
+        else:
+            dem_high=zeros(len(sind_flat)).astype('int')
                          
         #initialize new dem, and assing dem begining from low edges    
         if len(sind_low)!=0:
@@ -1705,8 +1708,13 @@ class dem(object):
                 self.search_boundary(self.sind_next,wlevel=1,level=0,level_max=level_max)
                 #print('search bnd: {}'.format(iflag*level_max))
                 
-            #save list info
+            #save list info    
+            
             sind_list=array([array(i) for i in self.sind_list])
+            if len(sind0)==1: 
+                slist_copy=array([0]).astype('O')
+                slist_copy[0]=sind_list[0].copy()
+                sind_list=slist_copy
             
             #clean
             delattr(self,'sind_next'); delattr(self,'sind0'); delattr(self,'flag_search')
@@ -2216,7 +2224,7 @@ class dem(object):
                 print('--------------------------------------------------------------')
                 print('---------work on depression: subdomain {}---------------------'.format(i+1))
                 print('--------------------------------------------------------------')
-        
+                        
                 Si=S.domains[i]; 
                 if hasattr(S,'dem'):
                     Si.read_demdata(data=S.dem)    
