@@ -290,9 +290,9 @@ class dem(object):
                 sinfo.extent=[xll+ix*dxy,xll+ix*dxy+(dx-1)*dxy,yll-iy*dxy-(dy-1)*dxy,yll-iy*dxy]                
                 sinfo.nodata=nodata
                 sinfo.ds=[dy,dx]                
-                sinfo.skiprows=6+iy+skiprows
-                sinfo.usecols=arange(ix,ix+dx).astype('int')+skiprows
-                sinfo.max_rows=dy
+                sinfo.skiprows=int(6+iy+skiprows)
+                sinfo.usecols=arange(ix,ix+dx).astype('int')+int(skiprows)
+                sinfo.max_rows=int(dy)
                 sinfo.depth_limit=depth_limit
                                 
                 #go global
@@ -2185,17 +2185,20 @@ class dem(object):
         #write shapefile
         write_shapefile_data(sname,SF)
         
-    def proc_demfile(self,names=None,ids=None,sname=None,depth_limit=[-1e5,1e4],subdomain_size=1e6,offset=1):
+    def proc_demfile(self,names=None,ids=None,sname=None,findex=None,depth_limit=[-1e5,1e4],subdomain_size=1e6,offset=1):
         
         #read file informations
         if not os.path.exists('{}.npz'.format(sname)):
-            self.read_files_info(names,ids,sname=sname,depth_limit=depth_limit,plot_domain=True,)        
+            self.read_files_info(names,ids,sname=sname,depth_limit=depth_limit,plot_domain=True)        
         else:
             self.read_data('{}.npz'.format(sname))
         nfile=len(self.headers)        
-                    
+
+        #determine which dem files to be read
+        if findex is None: findex=arange(nfile)
+
         #read each dem information 
-        for m in arange(nfile):
+        for m in findex:
             header=self.headers[m]
             
             t0=time.time(); S=dem();           
@@ -2206,7 +2209,7 @@ class dem(object):
             # if prod(S.info.ds)<subdomain_size: S.read_demdata()
             
             #--------------------------------------------------------------------------                        
-            print('-------------global domain is divided to: {} subdomains------------'.format(S.info.nsubdomain))
+            print('-------------global domain {} is divided to: {} subdomains------------'.format(header.id,S.info.nsubdomain))
             #compute dir on each subdomain
             for i in arange(S.info.nsubdomain):
                 t1=time.time();
@@ -2268,22 +2271,29 @@ if __name__=="__main__":
     # SS.write_shapefile('rivers','{}_rivers'.format(SS.headers[0].sname))
     
     #--------case 2------------------------------------------------------------    
-    ids=['01',]; names=['ne_atl_crm_v1.asc',]; sname='B'
-    SS=dem(); SS.proc_demfile(names,ids,sname=sname,depth_limit=[-10,5000],subdomain_size=1e7)
-    
-    SS.read_data('{}.npz'.format(SS.headers[0].sname))
-    SS.compute_river(acc_limit=5e2)
-    SS.write_shapefile('rivers','{}_rivers'.format(SS.headers[0].sname))
-    
-    #--------case 3------------------------------------------------------------    
-    # ids=['01',]; names=['13arcs/southern_louisiana_13_navd88_2010.asc',]; sname='C'
+    # ids=['01',]; names=['ne_atl_crm_v1.asc',]; sname='B'
     # SS=dem(); SS.proc_demfile(names,ids,sname=sname,depth_limit=[-10,5000],subdomain_size=1e7)
     
     # SS.read_data('{}.npz'.format(SS.headers[0].sname))
-    # SS.compute_river(acc_limit=1e4)
+    # SS.compute_river(acc_limit=5e2)
     # SS.write_shapefile('rivers','{}_rivers'.format(SS.headers[0].sname))
     
+    #--------case 3------------------------------------------------------------    
+    #ids=['01',]; names=['13arcs/southern_louisiana_13_navd88_2010.asc',]; sname='C'
+    #SS=dem(); SS.proc_demfile(names,ids,sname=sname,depth_limit=[-10,5000],subdomain_size=4e7)
     
+    #SS.read_data('{}.npz'.format(SS.headers[0].sname))
+    #SS.compute_river(acc_limit=1e4)
+    #SS.write_shapefile('rivers','{}_rivers'.format(SS.headers[0].sname))
+
+    #--------case 3------------------------------------------------------------    
+    ids=['01',]; names=['Gulf_1/gulf_1_dem_usgs_04.asc',]; sname='D'
+    SS=dem(); SS.proc_demfile(names,ids,sname=sname,depth_limit=[-10,5000],subdomain_size=4e7)
+    
+    SS.read_data('{}.npz'.format(SS.headers[0].sname))
+    SS.compute_river(acc_limit=1e4)
+    SS.write_shapefile('rivers','{}_rivers'.format(SS.headers[0].sname))
+
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------    
