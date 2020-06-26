@@ -25,6 +25,7 @@ class dem(object):
         '''
         save attributes of svars in *.npz format
         '''
+        if not isinstance(svars,list): svars=[svars,]
         
         S=npz_data(); 
         for svar in svars:
@@ -53,6 +54,9 @@ class dem(object):
         
         #convert nan to nodata
         self.remove_nan(outname)
+        
+        #only include data in depth_limit
+        exec('fp=(self.{}<self.info.depth_limit[0])|(self.{}>self.info.depth_limit[1]); self.{}[fp]=self.info.nodata'.format(outname,outname,outname))
         
         #add nodata bnd
         sind00=nonzero(self.dem.ravel()==self.info.nodata)[0]
@@ -194,7 +198,7 @@ class dem(object):
             if hasattr(self,'dir'): self.info.dir_bnd=self.info.dir_bnd[fpn].copy()        
 
                                                          
-    def read_deminfo(self,name=None,subdomain_size=5e6,offset=0,header=None):
+    def read_deminfo(self,name=None,subdomain_size=5e6,offset=0,depth_limit=[-1e5,1e4],header=None):
         '''
         read header info, and divide the data to subdomains based on subdomain_size
         work for *asc, add other format later
@@ -218,11 +222,12 @@ class dem(object):
         
            #change yll to upper left corner
            yll=yll+(ym-1)*dxy
-           skiprows=0; skipcols=0
+           skiprows=0; skipcols=0           
         else:
            xll,xllm,yllm,yll,dxy,xm,ym,nodata=header.diminfo
            skiprows=header.skiprows; skipcols=header.skipcols
            name=header.name
+           depth_limit=header.depth_limit
                 
         #process info
         nsize=ym*xm; 
@@ -233,7 +238,8 @@ class dem(object):
         self.info.ds=[ym,xm];      
         self.info.skiprows=6+skiprows
         self.info.usecols=arange(xm).astype('int')+skipcols
-        self.info.max_rows=ym 
+        self.info.max_rows=ym
+        self.info.depth_limit=depth_limit
                 
         #divide the domain into subdomains       
         nsub=max(around(nsize/subdomain_size),1);         
@@ -287,6 +293,7 @@ class dem(object):
                 sinfo.skiprows=6+iy+skiprows
                 sinfo.usecols=arange(ix,ix+dx).astype('int')+skiprows
                 sinfo.max_rows=dy
+                sinfo.depth_limit=depth_limit
                                 
                 #go global
                 sinfo.is_subdomain=True                
@@ -305,11 +312,11 @@ class dem(object):
                 sdata=dem(); sdata.info=sinfo
                 self.domains.append(sdata) 
     
-    def read_files(self,names,ids,plot_domain=False):
+    def read_files_info(self,names,ids,sname='deminfo',depth_limit=[-1e4,1e4],plot_domain=False):
         #read information about multiple dem files, and remove the overlap zone
         
         #read global information of files 
-        diminfo0=[]; nfile=len(names)
+        diminfo0=[]; nfile=len(names)        
         for name in names:
             #read header
             if name.endswith('.asc'):
@@ -330,129 +337,150 @@ class dem(object):
                     
             #process info
             diminfo0.append([xll,xll+(xm-1)*dxy,yll-(ym-1)*dxy,yll,dxy,xm,ym,nodata])
-    
-        #find neighboring domains
-        nbs=[]; slims=[]
-        for i in arange(nfile):
-            x1,x2,y1,y2,dxy=diminfo0[i][:5] 
-    
-            #neighboring domain
-            nb=[]  
-            cdxy=1.5*dxy; cx1=x1-cdxy; cx2=x2+cdxy; cy1=y1-cdxy; cy2=y2+cdxy  
-            for m in arange(nfile):
-                if m==i: continue
-                sx1,sx2,sy1,sy2=diminfo0[m][:4]
-    
-                fx10=(sx1>x1)*(sx1<x2);fx20=(sx2>x1)*(sx2<x2);fy10=(sy1>y1)*(sy1<y2);fy20=(sy2>y1)*(sy2<y2)
-                fx1=(sx1>cx1)*(sx1<cx2);fx2=(sx2>cx1)*(sx2<cx2);fy1=(sy1>cy1)*(sy1<cy2);fy2=(sy2>cy1)*(sy2<cy2)
-    
-                #if no overlap, skip
-                if not (fx1|fx2)*(fy1|fy2): continue
-                if (sum([fx1*fy1,fx2*fy1,fx1*fy2,fx2*fy2])<2)*(sum([fx10*fy10,fx20*fy10,fx10*fy20,fx20*fy20])==0): continue
-               
-                #add overlap info 
-                nb.append(m) 
-            nbs.append(nb); 
-              
-            #find which domain corner resides
-            #****************************************************************************
-            #this part need mannaul input, which dem file matters in the overlapping zone
-            #****************************************************************************
-            snb=[None,None,None,None]
-            xc=[x1,x2,x2,x1]; yc=[y1,y1,y2,y2] 
-            for m in arange(len(nb)): 
-                if int(ids[i])>int(ids[nb[m]]): continue 
-                sx1,sx2,sy1,sy2=diminfo0[nb[m]][:4]
-                for k in arange(4):
-                    xi=xc[k]; yi=yc[k]
-                    if (xi>sx1)*(xi<sx2)*(yi>sy1)*(yi<sy2): snb[k]=nb[m]
-    
-            #calculate new xy limit. There are eight situations
-            slim=[-99999,99999,-99999,99999] 
-            #bottom side
-            if snb[0]!=None and snb[1]!=None: 
-                slim[2]=max(slim[2],diminfo0[snb[0]][3],diminfo0[snb[1]][3])
-    
-            #right side
-            if snb[1]!=None and snb[2]!=None: 
-                slim[1]=min(slim[1],diminfo0[snb[1]][0],diminfo0[snb[2]][0])
-    
-            #upper side
-            if snb[2]!=None and snb[3]!=None: 
-                slim[3]=min(slim[3],diminfo0[snb[2]][2],diminfo0[snb[3]][2])
-    
-            #left side
-            if snb[0]!=None and snb[3]!=None: 
-                slim[0]=max(slim[0],diminfo0[snb[0]][1],diminfo0[snb[3]][1])
-           
-            #this part needed to be add manually if results are not correct   
-            if sum(array(snb)!=None)==1:
-               #lower left corner
-               if snb[0]!=None:
-                  slim[2]=max(slim[2],diminfo0[snb[0]][3])
-    
-               #lower right corner
-               if snb[1]!=None:
-                  slim[1]=min(slim[1],diminfo0[snb[1]][0])
-    
-               #upper right corner
-               if snb[2]!=None:
-                  if ids[i] in ['08',]:
-                    slim[3]=min(slim[3],diminfo0[snb[2]][2])
-                  else:
-                    slim[1]=min(slim[1],diminfo0[snb[2]][0])
-    
-               #upper left corner
-               if snb[3]!=None:
-                  slim[3]=min(slim[3],diminfo0[snb[3]][2])
-            slims.append(slim)
-    
-        #update new xy limits
-        skiprows=[]; skipcols=[]; diminfo=[]
-        for i in arange(nfile):   
-            x1,x2,y1,y2,dxy,xm,ym,nodata=diminfo0[i][:8]
-            xi=x1+dxy*arange(xm); xind=nonzero((xi>slims[i][0])*(xi<slims[i][1]))[0]
-            yi=y2-dxy*arange(ym); yind=nonzero((yi>slims[i][2])*(yi<slims[i][3]))[0]
-            ix1=xind.min(); ix2=xind.max(); iy1=yind.min(); iy2=yind.max();  
-            ym=(iy2-iy1+1); xm=(ix2-ix1+1); y2=y2-iy1*dxy; x1=x1+ix1*dxy
-            diminfo.append([x1,x1+(xm-1)*dxy,y2-(ym-1)*dxy,y2,dxy,xm,ym,nodata])
-            skiprows.append(iy1); skipcols.append(ix1)
-    
-        #reorgnize info
-        self.headers=[]
-        for i in arange(nfile):
+                
+        if nfile==1:
+            #if there is only one dem, return
+            self.headers=[]        
             header=npz_data()
-            header.diminfo=diminfo[i]
-            header.id=ids[i]
-            header.name=names[i]
-            header.nbs=nbs[i]
-            header.skipcols=skipcols[i]
-            header.skiprows=skiprows[i]
-            self.headers.append(header)                    
-
-        #plot domains before and after removing overlapping zone
-        if plot_domain:
-           colors=['r','g','b','k','m']
-           figure(figsize=[12,10])
-           subplot(2,1,1)
-           for i in arange(nfile):
-               x1,x2,y1,y2=diminfo0[i][:4] 
-               xi=array([x1,x2,x2,x1,x1]); yi=array([y1,y1,y2,y2,y1])
-               plot(xi,yi,'-',color=colors[mod(i,5)],alpha=0.6) 
-               text((x1+x2)/2,(y1+y2)/2,ids[i],color=colors[mod(i,5)],alpha=0.6)
-           title('domains of each dem files: original')
-     
-           subplot(2,1,2)
-           for i in arange(nfile):
-               x1,x2,y1,y2=diminfo[i][:4] 
-               xi=array([x1,x2,x2,x1,x1]); yi=array([y1,y1,y2,y2,y1])
-               xi=array([x1,x2,x2,x1,x1]); yi=array([y1,y1,y2,y2,y1])
-               plot(xi,yi,'-',color=colors[mod(i,5)],alpha=0.6) 
-               text((x1+x2)/2,(y1+y2)/2,ids[i],color=colors[mod(i,5)],alpha=0.6)
-           title('domains of each dem files: removing overlapping zone')
-           gcf().tight_layout()
-           savefig('dem_domains_overlap')
-           close()
+            header.diminfo=diminfo0[0]
+            header.id=ids[0]
+            header.name=names[0]
+            header.sname='{}_{}'.format(sname,ids[0])
+            header.depth_limit=depth_limit
+            header.nbs=[]
+            header.skipcols=0
+            header.skiprows=0
+            self.headers.append(header) 
+        else:         
+            #for multiple files
+            
+            #find neighboring domains
+            nbs=[]; slims=[]
+            for i in arange(nfile):
+                x1,x2,y1,y2,dxy=diminfo0[i][:5] 
+        
+                #neighboring domain
+                nb=[]  
+                cdxy=1.5*dxy; cx1=x1-cdxy; cx2=x2+cdxy; cy1=y1-cdxy; cy2=y2+cdxy  
+                for m in arange(nfile):
+                    if m==i: continue
+                    sx1,sx2,sy1,sy2=diminfo0[m][:4]
+        
+                    fx10=(sx1>x1)*(sx1<x2);fx20=(sx2>x1)*(sx2<x2);fy10=(sy1>y1)*(sy1<y2);fy20=(sy2>y1)*(sy2<y2)
+                    fx1=(sx1>cx1)*(sx1<cx2);fx2=(sx2>cx1)*(sx2<cx2);fy1=(sy1>cy1)*(sy1<cy2);fy2=(sy2>cy1)*(sy2<cy2)
+        
+                    #if no overlap, skip
+                    if not (fx1|fx2)*(fy1|fy2): continue
+                    if (sum([fx1*fy1,fx2*fy1,fx1*fy2,fx2*fy2])<2)*(sum([fx10*fy10,fx20*fy10,fx10*fy20,fx20*fy20])==0): continue
+                   
+                    #add overlap info 
+                    nb.append(m) 
+                nbs.append(nb); 
+                  
+                #find which domain corner resides
+                #****************************************************************************
+                #this part need mannaul input, which dem file matters in the overlapping zone
+                #****************************************************************************
+                snb=[None,None,None,None]
+                xc=[x1,x2,x2,x1]; yc=[y1,y1,y2,y2] 
+                for m in arange(len(nb)): 
+                    if int(ids[i])>int(ids[nb[m]]): continue 
+                    sx1,sx2,sy1,sy2=diminfo0[nb[m]][:4]
+                    for k in arange(4):
+                        xi=xc[k]; yi=yc[k]
+                        if (xi>sx1)*(xi<sx2)*(yi>sy1)*(yi<sy2): snb[k]=nb[m]
+        
+                #calculate new xy limit. There are eight situations
+                slim=[-99999,99999,-99999,99999] 
+                #bottom side
+                if snb[0]!=None and snb[1]!=None: 
+                    slim[2]=max(slim[2],diminfo0[snb[0]][3],diminfo0[snb[1]][3])
+        
+                #right side
+                if snb[1]!=None and snb[2]!=None: 
+                    slim[1]=min(slim[1],diminfo0[snb[1]][0],diminfo0[snb[2]][0])
+        
+                #upper side
+                if snb[2]!=None and snb[3]!=None: 
+                    slim[3]=min(slim[3],diminfo0[snb[2]][2],diminfo0[snb[3]][2])
+        
+                #left side
+                if snb[0]!=None and snb[3]!=None: 
+                    slim[0]=max(slim[0],diminfo0[snb[0]][1],diminfo0[snb[3]][1])
+               
+                #this part needed to be add manually if results are not correct   
+                if sum(array(snb)!=None)==1:
+                   #lower left corner
+                   if snb[0]!=None:
+                      slim[2]=max(slim[2],diminfo0[snb[0]][3])
+        
+                   #lower right corner
+                   if snb[1]!=None:
+                      slim[1]=min(slim[1],diminfo0[snb[1]][0])
+        
+                   #upper right corner
+                   if snb[2]!=None:
+                      if ids[i] in ['08',]:
+                        slim[3]=min(slim[3],diminfo0[snb[2]][2])
+                      else:
+                        slim[1]=min(slim[1],diminfo0[snb[2]][0])
+        
+                   #upper left corner
+                   if snb[3]!=None:
+                      slim[3]=min(slim[3],diminfo0[snb[3]][2])
+                slims.append(slim)
+        
+            #update new xy limits
+            skiprows=[]; skipcols=[]; diminfo=[]
+            for i in arange(nfile):   
+                x1,x2,y1,y2,dxy,xm,ym,nodata=diminfo0[i][:8]
+                xi=x1+dxy*arange(xm); xind=nonzero((xi>slims[i][0])*(xi<slims[i][1]))[0]
+                yi=y2-dxy*arange(ym); yind=nonzero((yi>slims[i][2])*(yi<slims[i][3]))[0]
+                ix1=xind.min(); ix2=xind.max(); iy1=yind.min(); iy2=yind.max();  
+                ym=(iy2-iy1+1); xm=(ix2-ix1+1); y2=y2-iy1*dxy; x1=x1+ix1*dxy
+                diminfo.append([x1,x1+(xm-1)*dxy,y2-(ym-1)*dxy,y2,dxy,xm,ym,nodata])
+                skiprows.append(iy1); skipcols.append(ix1)
+        
+            #reorgnize info
+            self.headers=[]
+            for i in arange(nfile):
+                header=npz_data()
+                header.diminfo=diminfo[i]
+                header.id=ids[i]
+                header.name=names[i]
+                header.sname='{}_{}'.format(sname,ids[i])
+                header.depth_limit=depth_limit
+                header.nbs=nbs[i]
+                header.skipcols=skipcols[i]
+                header.skiprows=skiprows[i]
+                self.headers.append(header)                    
+    
+            #plot domains before and after removing overlapping zone
+            if plot_domain:
+               colors=['r','g','b','k','m']
+               figure(figsize=[12,10])
+               subplot(2,1,1)
+               for i in arange(nfile):
+                   x1,x2,y1,y2=diminfo0[i][:4] 
+                   xi=array([x1,x2,x2,x1,x1]); yi=array([y1,y1,y2,y2,y1])
+                   plot(xi,yi,'-',color=colors[mod(i,5)],alpha=0.6) 
+                   text((x1+x2)/2,(y1+y2)/2,ids[i],color=colors[mod(i,5)],alpha=0.6)
+               title('domains of each dem files: original')
+         
+               subplot(2,1,2)
+               for i in arange(nfile):
+                   x1,x2,y1,y2=diminfo[i][:4] 
+                   xi=array([x1,x2,x2,x1,x1]); yi=array([y1,y1,y2,y2,y1])
+                   xi=array([x1,x2,x2,x1,x1]); yi=array([y1,y1,y2,y2,y1])
+                   plot(xi,yi,'-',color=colors[mod(i,5)],alpha=0.6) 
+                   text((x1+x2)/2,(y1+y2)/2,ids[i],color=colors[mod(i,5)],alpha=0.6)
+               title('domains of each dem files: removing overlapping zone')
+               gcf().tight_layout()
+               savefig('dem_domains_overlap')
+               close()
+        
+        #save domain information
+        self.save_data(sname,'headers')
         
     def compute_river(self,seg=None,sind=None,acc_limit=1e4,nodata=None,apply_mask=False,msg=False):   
         '''
@@ -577,7 +605,7 @@ class dem(object):
             fpb=(iy==(ym-1))|(ix==(xm-1))|(iy==0)|(ix==0)
             fps=fps[~fpb]
 
-            #check the other three directions see whether 
+            #check the other three directions
             sind_next=r_[sind[fps]-xm,sind[fps]-xm-1,sind[fps]-1]
             seg_next=self.seg.ravel()[sind_next]
             
@@ -593,7 +621,7 @@ class dem(object):
         self.boundary=self.search_boundary(sind,level_max=level_max,msg=msg)  
         
         #add boundary info        
-        self.info.bseg=seg
+        #self.info.bseg=seg
     
     def compute_watershed(self,msg=False):
         '''        
@@ -1004,7 +1032,7 @@ class dem(object):
         print('--------------------------------------------------------------')
         
         #pre-define variables       
-        ds=self.info.ds; ym,xm=ds; nodata=S.info.nodata
+        ds=self.info.ds; ym,xm=ds; nodata=self.info.nodata
                 
         #this part assign dir directly if the original dir of boundary cells is not zero
         sind0=self.info.sind_bnd_local; iy,ix=unravel_index(sind0,ds); 
@@ -1061,7 +1089,7 @@ class dem(object):
         sind00=sort(self.info.sind_bnd_local[fp]); seg00=arange(len(sind00)).astype('int')+1
         self.search_upstream(sind00,ireturn=3,seg=seg00,level_max=level_max,msg=msg)
         #get h00
-        tmp,iA,iB=intersect1d(sind00,S.info.sind_bnd_local,return_indices=True); h00=self.info.dem_bnd_local[iB]
+        tmp,iA,iB=intersect1d(sind00,self.info.sind_bnd_local,return_indices=True); h00=self.info.dem_bnd_local[iB]
                 
         #identify all depressions 
         iy,ix=unravel_index(self.info.sind_bnd_local,ds)
@@ -1127,7 +1155,7 @@ class dem(object):
             #assign dir, and break loops in case
             self.dir.ravel()[sind0[fpm]]=dir_min[fpm]
             sind_list, flag_loop=self.search_downstream(sind0[fpm],ireturn=3,msg=msg)    
-            fpl=fpm[nonzero(flag_loop==1)[0]]; S.dir.ravel()[sind0[fpl]]=0
+            fpl=fpm[nonzero(flag_loop==1)[0]]; self.dir.ravel()[sind0[fpl]]=0
             fpr=fpm[nonzero(flag_loop!=1)[0]] 
             if len(fpr)==0: break
                     
@@ -1154,7 +1182,7 @@ class dem(object):
                 
             #assign new seg number               
             for i in fpr:            
-                S.seg.ravel()[sind_segs[i]]=seg_min_final[i]        
+                self.seg.ravel()[sind_segs[i]]=seg_min_final[i]        
                 if id_min[i]!=-1: sind_segs[id_min_final[i]]=r_[sind_segs[id_min_final[i]],sind_segs[i]]
                                    
             #update sind0, sind_segs
@@ -1182,9 +1210,9 @@ class dem(object):
             #exclude nonboundary indices
             sind_bnd_all=[]; ids=[]; id1=0; id2=0;  
             for i in arange(slen):
-                nsind=len(S.boundary[i])
+                nsind=len(self.boundary[i])
                 id2=id1+nsind
-                sind_bnd_all.extend(S.boundary[i])                    
+                sind_bnd_all.extend(self.boundary[i])                    
                 ids.append(arange(id1,id2).astype('int')); id1=id1+nsind
             sind_bnd_all=array(sind_bnd_all); ids=array(ids)
             flag_bnd_all=self.search_flat(sind_bnd_all,ireturn=10,msg=msg)
@@ -1197,7 +1225,7 @@ class dem(object):
             idz=nonzero((len_bnd==0)*(len_seg!=0))[0]
             if len(idz)!=0:
                 #save boundary first
-                boundary=self.boundary.copy(); delattr(S,'boundary')
+                boundary=self.boundary.copy(); delattr(self,'boundary')
                 self.compute_boundary(sind=sind0[idz],msg=msg);
                 if len(idz)==1:
                     boundary[idz[0]]=self.boundary[0]
@@ -1318,8 +1346,20 @@ class dem(object):
             sind_segs=sind_segs[id_left]
             self.boundary=self.boundary[id_left]
         
+        #update boundary information
+        tmp,iA,iB=intersect1d(self.info.sind_bnd_local,self.info.sind_bnd_nodata,return_indices=True)
+        if not array_equal(tmp,self.info.sind_bnd_nodata): sys.exit('not equal: tmp,self.info.sind_bnd_nodata')
+        flag_nodata=zeros(self.info.sind_bnd_local.size).astype('int'); flag_nodata[iA]=1
+        
+        iy,ix=unravel_index(self.info.sind_bnd_local,ds)                 
+        fp=~((iy>0)*(iy<(ym-1))*(ix>0)*(ix<(xm-1))*(flag_nodata==0));
+        self.info.sind_bnd=self.info.sind_bnd_local[fp]        
+        self.info.dem_bnd=self.info.dem_bnd_local[fp]
+        self.info.dir_bnd=self.dir.ravel()[self.info.sind_bnd]
+        
+        #delete attributes
+        delattr(self.info,'sind_bnd_local'); delattr(self.info,'dem_bnd_local'); delattr(self.info,'dir_bnd_local');        
         delattr(self,'seg'); delattr(self,'boundary')
-
            
     def resolve_flat(self,sind0=None,zlimit=0):
         '''
@@ -2114,33 +2154,95 @@ class dem(object):
         '''
         
         #get data
-        S=npz_data()
+        SF=npz_data()
         if isinstance(data, str): 
-            exec('S.data=self.{}'.format(data))
+            exec('SF.data=self.{}'.format(data))
         else:
-            S.data=data
+            SF.data=data
         
         #get type and prj
-        S.type=stype
-        S.prj=get_prj_file(prjname)
+        SF.type=stype
+        SF.prj=get_prj_file(prjname)
         
         #get attrs
         if (attname is not None) and (attvalue is not None):
-            S.attname=attname
-            S.attvalue=attvalue
+            SF.attname=attname
+            SF.attvalue=attvalue
         
         #get xy
-        S.xy=[];
-        for i in arange(len(S.data)):            
-            yi,xi=self.get_coordinates(S.data[i])
+        SF.xy=[];
+        for i in arange(len(SF.data)):            
+            yi,xi=self.get_coordinates(SF.data[i])
             fp=(xi==self.info.nodata)|(yi==self.info.nodata);
             xi[fp]=nan; yi[fp]=nan;            
-            S.xy.append(c_[xi,yi])
-        S.xy=array(S.xy)
-        if S.xy.ndim==3: S.xy=squeeze(S.xy)
+            SF.xy.append(c_[xi,yi])
+        SF.xy=array(SF.xy)
+        if SF.xy.ndim==3: SF.xy=squeeze(SF.xy)
         
         #write shapefile
-        write_shapefile_data(sname,S)
+        write_shapefile_data(sname,SF)
+        
+    def proc_demfile(self,names=None,ids=None,sname=None,depth_limit=[-1e5,1e4],subdomain_size=1e6,offset=1):
+        
+        #read file informations
+        if not os.path.exists('{}.npz'.format(sname)):
+            self.read_files_info(names,ids,sname=sname,depth_limit=depth_limit,plot_domain=True,)        
+        else:
+            self.read_data('{}.npz'.format(sname))
+        nfile=len(self.headers)        
+                    
+        #read each dem information 
+        for m in arange(nfile):
+            header=self.headers[m]
+            
+            t0=time.time(); S=dem();           
+            #read diminfo           
+            S.read_deminfo(subdomain_size=subdomain_size,offset=offset,header=header)
+            
+            #if data size is smaller than subdomain_size, read the whole data
+            # if prod(S.info.ds)<subdomain_size: S.read_demdata()
+            
+            #--------------------------------------------------------------------------                        
+            print('-------------global domain is divided to: {} subdomains------------'.format(S.info.nsubdomain))
+            #compute dir on each subdomain
+            for i in arange(S.info.nsubdomain):
+                t1=time.time();
+                print('--------------------------------------------------------------')
+                print('---------work on depression: subdomain {}---------------------'.format(i+1))
+                print('--------------------------------------------------------------')
+        
+                Si=S.domains[i]; 
+                if hasattr(S,'dem'):
+                    Si.read_demdata(data=S.dem)    
+                else:
+                    Si.read_demdata()    
+                                    
+                Si.compute_dir();
+                
+                #if Si is a subdomain, save bnd info for collecting
+                if S.info.nsubdomain>1:            
+                    Si.collapse_subdomain();              
+                    Si.change_bnd_dir()     
+                                       
+                #resolve flat and fill depression
+                Si.fill_depression(level_max=100,method=0)
+                delattr(Si,'dem');
+                print('time={:.1f}s, total time={:.1f}s'.format(time.time()-t1,time.time()-t0))
+                                      
+            #collect dir
+            S.collect_subdomain_data(name='dir',outname='dir')
+            S.info.nodata=Si.info.nodata
+            
+            #fill global depression            
+            if S.info.nsubdomain>1:
+                S.fill_depression_global() 
+            
+            #save information
+            S.compute_watershed()
+            S.save_data(header.sname,['dir','acc','seg','info'])
+      
+            dt=time.time()-t0
+            print('total time={:.1f}s'.format(time.time()-t0))
                          
 if __name__=="__main__":    
     close('all')
@@ -2149,155 +2251,36 @@ if __name__=="__main__":
 #---------------read multiple dem files----------------------------------------
 #------------------------------------------------------------------------------
     #file names
-    ids=[*arange(4,16),*arange(30,36),*arange(40,46)]; 
-    ids=['{:02}'.format(i) for i in ids]; ids.extend(['010','011'])
-    names=['Gulf_1/gulf_1_dem_usgs_{}.asc'.format(i) for i in ids]
+    # ids=[*arange(4,16),*arange(30,36),*arange(40,46)]; 
+    # ids=['{:02}'.format(i) for i in ids]; ids.extend(['010','011'])
+    # names=['Gulf_1/gulf_1_dem_usgs_{}.asc'.format(i) for i in ids]
+    # names=['Z:\pysheds\Gulf_1\gulf_1_dem_usgs_{}.asc'.format(i) for i in ids]
     
-    S=dem(); S.read_files(names,ids,plot_domain=True)
-
-    # #read global information of files 
-    # diminfo0=[]
-    # for name in names:
-    #     #read header
-    #     if name.endswith('.asc'):
-    #         with open(name,'r') as fid:
-    #             xm=int(fid.readline().split()[1])
-    #             ym=int(fid.readline().split()[1])
-    #             xll=float(fid.readline().split()[1])
-    #             yll=float(fid.readline().split()[1])
-    #             dxy=float(fid.readline().split()[1])
-    #             nval=fid.readline().split()[1]
-    #             if nval.lower() in ('nan','-nan'):
-    #                 nodata=nan
-    #             else:
-    #                 nodata=float(nval)
-        
-    #     #change yll to upper left corner
-    #     yll=yll+(ym-1)*dxy
-                
-    #     #process info
-    #     diminfo0.append([xll,xll+(xm-1)*dxy,yll-(ym-1)*dxy,yll,dxy,xm,ym,nodata])
-    # S=npz_data(); S.nf=len(ids); S.ids=array(ids); S.names=array(names); S.diminfo0=diminfo0
-
-    # #find neighboring domains
-    # nbs=[]; slims=[]
-    # for i in arange(S.nf):
-    #     x1,x2,y1,y2,dxy=S.diminfo0[i][:5] 
-
-    #     #neighboring domain
-    #     nb=[]  
-    #     cdxy=1.5*dxy; cx1=x1-cdxy; cx2=x2+cdxy; cy1=y1-cdxy; cy2=y2+cdxy  
-    #     for m in arange(S.nf):
-    #         if m==i: continue
-    #         sx1,sx2,sy1,sy2=S.diminfo0[m][:4]
-
-    #         fx10=(sx1>x1)*(sx1<x2);fx20=(sx2>x1)*(sx2<x2);fy10=(sy1>y1)*(sy1<y2);fy20=(sy2>y1)*(sy2<y2)
-    #         fx1=(sx1>cx1)*(sx1<cx2);fx2=(sx2>cx1)*(sx2<cx2);fy1=(sy1>cy1)*(sy1<cy2);fy2=(sy2>cy1)*(sy2<cy2)
-
-    #         #if no overlap, skip
-    #         if not (fx1|fx2)*(fy1|fy2): continue
-    #         if (sum([fx1*fy1,fx2*fy1,fx1*fy2,fx2*fy2])<2)*(sum([fx10*fy10,fx20*fy10,fx10*fy20,fx20*fy20])==0): continue
-           
-    #         #add overlap info 
-    #         nb.append(m) 
-    #     nbs.append(nb); 
-          
-    #     #find which domain corner resides 
-    #     snb=[None,None,None,None]
-    #     xc=[x1,x2,x2,x1]; yc=[y1,y1,y2,y2] 
-    #     for m in arange(len(nb)): 
-    #         if int(S.ids[i])>int(S.ids[nb[m]]): continue 
-    #         sx1,sx2,sy1,sy2=S.diminfo0[nb[m]][:4]
-    #         for k in arange(4):
-    #             xi=xc[k]; yi=yc[k]
-    #             if (xi>sx1)*(xi<sx2)*(yi>sy1)*(yi<sy2): snb[k]=nb[m]
-
-    #     #calculate new xy limit. There are eight situations
-    #     slim=[-99999,99999,-99999,99999] 
-    #     #bottom side
-    #     if snb[0]!=None and snb[1]!=None: 
-    #         slim[2]=max(slim[2],S.diminfo0[snb[0]][3],S.diminfo0[snb[1]][3])
-
-    #     #right side
-    #     if snb[1]!=None and snb[2]!=None: 
-    #         slim[1]=min(slim[1],S.diminfo0[snb[1]][0],S.diminfo0[snb[2]][0])
-
-    #     #upper side
-    #     if snb[2]!=None and snb[3]!=None: 
-    #         slim[3]=min(slim[3],S.diminfo0[snb[2]][2],S.diminfo0[snb[3]][2])
-
-    #     #left side
-    #     if snb[0]!=None and snb[3]!=None: 
-    #         slim[0]=max(slim[0],S.diminfo0[snb[0]][1],S.diminfo0[snb[3]][1])
-       
-    #     #this part needed to be add manually if results are not correct   
-    #     if sum(array(snb)!=None)==1:
-    #        #lower left corner
-    #        if snb[0]!=None:
-    #           slim[2]=max(slim[2],S.diminfo0[snb[0]][3])
-
-    #        #lower right corner
-    #        if snb[1]!=None:
-    #           slim[1]=min(slim[1],S.diminfo0[snb[1]][0])
-
-    #        #upper right corner
-    #        if snb[2]!=None:
-    #           if S.ids[i] in ['08',]:
-    #             slim[3]=min(slim[3],S.diminfo0[snb[2]][2])
-    #           else:
-    #             slim[1]=min(slim[1],S.diminfo0[snb[2]][0])
-
-    #        #upper left corner
-    #        if snb[3]!=None:
-    #           slim[3]=min(slim[3],S.diminfo0[snb[3]][2])
-
-    #     slims.append(slim)
-    # S.nbs=array(nbs); slims=array(slims) 
-
-    # #update new xy limits
-    # skiprows=[]; skipcols=[]; diminfo=[]
-    # for i in arange(S.nf):   
-    #     x1,x2,y1,y2,dxy,xm,ym,nodata=S.diminfo0[i][:8]
-    #     xi=x1+dxy*arange(xm); xind=nonzero((xi>slims[i][0])*(xi<slims[i][1]))[0]
-    #     yi=y2-dxy*arange(ym); yind=nonzero((yi>slims[i][2])*(yi<slims[i][3]))[0]
-    #     ix1=xind.min(); ix2=xind.max(); iy1=yind.min(); iy2=yind.max();  
-    #     ym=(iy2-iy1+1); xm=(ix2-ix1+1); y2=y2-iy1*dxy; x1=x1+ix1*dxy
-    #     diminfo.append([x1,x1+(xm-1)*dxy,y2-(ym-1)*dxy,y2,dxy,xm,ym,nodata])
-    #     skiprows.append(iy1); skipcols.append(ix1)
-    # S.diminfo=diminfo; S.skiprows=array(skiprows); S.skipcols=array(skipcols)
-
-    # #reorgnize info
-    # S.headers=[]
-    # for i in arange(S.nf):
-    #     Si=npz_data()
-    #     Si.diminfo=S.diminfo[i]
-    #     Si.id=S.ids[i]
-    #     Si.name=S.names[i]
-    #     Si.nbs=S.nbs[i]
-    #     Si.skipcols=S.skipcols[i]
-    #     Si.skiprows=S.skiprows[i]
-    #     S.headers.append(Si)
-
-    # #plot domains
-    # colors=['r','g','b','k','m']
-    # subplot(2,1,1)
-    # for i in arange(S.nf):
-    #     x1,x2,y1,y2=S.diminfo0[i][:4] 
-    #     xi=array([x1,x2,x2,x1,x1]); yi=array([y1,y1,y2,y2,y1])
-    #     plot(xi,yi,'-',color=colors[mod(i,5)],alpha=0.6) 
-    #     text((x1+x2)/2,(y1+y2)/2,S.ids[i],color=colors[mod(i,5)],alpha=0.6)
-
-    # subplot(2,1,2)
-    # for i in arange(S.nf):
-    #     x1,x2,y1,y2=S.diminfo[i][:4] 
-    #     xi=array([x1,x2,x2,x1,x1]); yi=array([y1,y1,y2,y2,y1])
-    #     xi=array([x1,x2,x2,x1,x1]); yi=array([y1,y1,y2,y2,y1])
-    #     plot(xi,yi,'-',color=colors[mod(i,5)],alpha=0.6) 
-    #     text((x1+x2)/2,(y1+y2)/2,S.ids[i],color=colors[mod(i,5)],alpha=0.6)
-    # savefig('domain_1')
-        
-    # show()    
-       
+    #----------case 1----------------------------------------------------------
+    # ids=['01',]; names=['GEBCO.asc',]; sname='A';
+    # SS=dem(); SS.proc_demfile(names,ids,sname=sname,depth_limit=[-10,5000],subdomain_size=1e6)
+    
+    # SS.read_data('{}.npz'.format(SS.headers[0].sname))
+    # SS.compute_river(acc_limit=5e2)
+    # SS.write_shapefile('rivers','{}_rivers'.format(SS.headers[0].sname))
+    
+    #--------case 2------------------------------------------------------------    
+    # ids=['01',]; names=['ne_atl_crm_v1.asc',]; sname='B'
+    # SS=dem(); SS.proc_demfile(names,ids,sname=sname,depth_limit=[-10,5000],subdomain_size=1e7)
+    
+    # SS.read_data('{}.npz'.format(SS.headers[0].sname))
+    # SS.compute_river(acc_limit=5e2)
+    # SS.write_shapefile('rivers','{}_rivers'.format(SS.headers[0].sname))
+    
+    #--------case 3------------------------------------------------------------    
+    ids=['01',]; names=['13arcs/southern_louisiana_13_navd88_2010.asc',]; sname='C'
+    SS=dem(); SS.proc_demfile(names,ids,sname=sname,depth_limit=[-10,5000],subdomain_size=1e7)
+    
+    SS.read_data('{}.npz'.format(SS.headers[0].sname))
+    SS.compute_river(acc_limit=1e4)
+    SS.write_shapefile('rivers','{}_rivers'.format(SS.headers[0].sname))
+    
+    
 
 
 #------------------------------------------------------------------------------
@@ -2317,12 +2300,12 @@ if __name__=="__main__":
     # S=dem(); 
     # t0=time.time();
     # #--------------------------------------------------------------------------
-    # # S.read_deminfo('GEBCO.asc',subdomain_size=1e6,offset=1)
-    # # # S.read_demdata()
+    # S.read_deminfo('GEBCO.asc',subdomain_size=1e6,offset=1)
+    # S.read_demdata()
     # # S.read_data('S1_DEM.npz')
   
-    # S.read_deminfo('ne_atl_crm_v1.asc',subdomain_size=2e7,offset=1)
-    # S.read_demdata()
+    # # S.read_deminfo('ne_atl_crm_v1.asc',subdomain_size=2e7,offset=1)
+    # # S.read_demdata()
     # # S.read_data('S2_DEM.npz'); 
     
     # # S.read_deminfo('13arcs/southern_louisiana_13_navd88_2010.asc',subdomain_size=2e7,offset=1)    
@@ -2365,8 +2348,8 @@ if __name__=="__main__":
     #     S.fill_depression_global() 
     
     # S.compute_watershed()
-    # S.compute_river(arange(1,1e7),acc_limit=1e4)
-    # S.write_shapefile('rivers','C1_22_rivers')
+    # S.compute_river(arange(1,1e7),acc_limit=1e3)
+    # S.write_shapefile('rivers','A1_22_rivers')
     
     # dt=time.time()-t0
     # print('total time={:.1f}s'.format(time.time()-t0))
