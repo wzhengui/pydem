@@ -1397,8 +1397,11 @@ class dem(object):
         #initialize new dem, and assing dem begining from high edges        
         dem_high=self.search_flat(sind_high,ireturn=4,zlimit=zlimit)[sind_flat]        
                          
-        #initialize new dem, and assing dem begining from low edges        
-        dem_low=self.search_flat(sind_low,ireturn=5,zlimit=zlimit)[sind_flat]
+        #initialize new dem, and assing dem begining from low edges    
+        if len(sind_low)!=0:
+            dem_low=self.search_flat(sind_low,ireturn=5,zlimit=zlimit)[sind_flat]
+        else:
+            dem_low=zeros(len(sind_flat)).astype('int')
                         
         #combine dem_high and dem_low 
         dem_new=2*dem_low+dem_high
@@ -2265,24 +2268,22 @@ if __name__=="__main__":
     # SS.write_shapefile('rivers','{}_rivers'.format(SS.headers[0].sname))
     
     #--------case 2------------------------------------------------------------    
-    # ids=['01',]; names=['ne_atl_crm_v1.asc',]; sname='B'
-    # SS=dem(); SS.proc_demfile(names,ids,sname=sname,depth_limit=[-10,5000],subdomain_size=1e7)
-    
-    # SS.read_data('{}.npz'.format(SS.headers[0].sname))
-    # SS.compute_river(acc_limit=5e2)
-    # SS.write_shapefile('rivers','{}_rivers'.format(SS.headers[0].sname))
-    
-    #--------case 3------------------------------------------------------------    
-    ids=['01',]; names=['13arcs/southern_louisiana_13_navd88_2010.asc',]; sname='C'
+    ids=['01',]; names=['ne_atl_crm_v1.asc',]; sname='B'
     SS=dem(); SS.proc_demfile(names,ids,sname=sname,depth_limit=[-10,5000],subdomain_size=1e7)
     
     SS.read_data('{}.npz'.format(SS.headers[0].sname))
-    SS.compute_river(acc_limit=1e4)
+    SS.compute_river(acc_limit=5e2)
     SS.write_shapefile('rivers','{}_rivers'.format(SS.headers[0].sname))
     
+    #--------case 3------------------------------------------------------------    
+    # ids=['01',]; names=['13arcs/southern_louisiana_13_navd88_2010.asc',]; sname='C'
+    # SS=dem(); SS.proc_demfile(names,ids,sname=sname,depth_limit=[-10,5000],subdomain_size=1e7)
     
-
-
+    # SS.read_data('{}.npz'.format(SS.headers[0].sname))
+    # SS.compute_river(acc_limit=1e4)
+    # SS.write_shapefile('rivers','{}_rivers'.format(SS.headers[0].sname))
+    
+    
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------    
