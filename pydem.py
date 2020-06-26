@@ -1046,6 +1046,8 @@ class dem(object):
             fp=setdiff1d(arange(len(sind0)),iA)
             sind0=sind0[fp]; dem0=dem0[fp]; dir0=dir0[fp]; dir=dir[fp]
         
+        if len(sind0)==0: return
+        
         print('---------assign dir directly if original dir is not zero------')
         #put flow into another seg if its original dir is not zero, it doesn't form loops    
         fpz=nonzero((dir0!=0)*(dir==0))[0]; 
