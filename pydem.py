@@ -1035,6 +1035,7 @@ class dem(object):
         ds=self.info.ds; ym,xm=ds; nodata=self.info.nodata
                 
         #this part assign dir directly if the original dir of boundary cells is not zero
+        if len(self.info.sind_bnd_local)==0: return
         sind0=self.info.sind_bnd_local; iy,ix=unravel_index(sind0,ds); 
         fp=(iy>0)*(iy<(ym-1))*(ix>0)*(ix<(xm-1)); sind0=sind0[fp]
         dem0=self.info.dem_bnd_local[fp]; dir0=self.info.dir_bnd_local[fp]; #original
