@@ -2224,7 +2224,7 @@ class dem(object):
             for i in arange(S.info.nsubdomain):
                 t1=time.time();
                 print('--------------------------------------------------------------')
-                print('---------work on depression: subdomain {}---------------------'.format(i+1))
+                print('---------{},work on depression: subdomain {}---------------------'.format(header.id,i+1))
                 print('--------------------------------------------------------------')
                         
                 Si=S.domains[i]; 
@@ -2248,6 +2248,9 @@ class dem(object):
             #collect dir
             S.collect_subdomain_data(name='dir',outname='dir')
             S.info.nodata=Si.info.nodata
+
+            S.save_data('A{}'.format(header.sname),['dir','info'])
+            sys.exit()
             
             #fill global depression            
             if S.info.nsubdomain>1:
@@ -2255,7 +2258,8 @@ class dem(object):
             
             #save information
             S.compute_watershed()
-            S.save_data(header.sname,['dir','acc','seg','info'])
+            #S.save_data(header.sname,['dir','acc','seg','info'])
+            S.save_data(header.sname,['dir','info'])
       
             dt=time.time()-t0
             print('total time={:.1f}s'.format(time.time()-t0))
@@ -2297,12 +2301,16 @@ if __name__=="__main__":
     #SS.write_shapefile('rivers','{}_rivers'.format(SS.headers[0].sname))
 
     #--------case 3------------------------------------------------------------    
-    ids=['01',]; names=['Gulf_1/gulf_1_dem_usgs_04.asc',]; sname='D'
-    SS=dem(); SS.proc_demfile(names,ids,sname=sname,depth_limit=[-10,5000],subdomain_size=4e7)
+    #ids=['01',]; names=['Gulf_1/gulf_1_dem_usgs_04.asc',]; sname='D'
+    #SS=dem(); SS.proc_demfile(names,ids,sname=sname,depth_limit=[-10,5000],subdomain_size=4e7)
     
-    SS.read_data('{}.npz'.format(SS.headers[0].sname))
-    SS.compute_river(acc_limit=1e4)
-    SS.write_shapefile('rivers','{}_rivers'.format(SS.headers[0].sname))
+    #SS.read_data('{}.npz'.format(SS.headers[0].sname))
+    #SS.compute_river(acc_limit=1e4)
+    #SS.write_shapefile('rivers','{}_rivers'.format(SS.headers[0].sname))
+    #--------------case 4
+    S=dem();
+    S.read_data('AG_04.npz')
+    S.fill_depression_global() 
 
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
