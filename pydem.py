@@ -152,9 +152,9 @@ class dem(object):
         self.info.header=[ym,xm,yll-iy*dxy,xll+ix*dxy,dxy]
         self.info.extent=[xll+ix*dxy,xll+ix*dxy+(xm-1)*dxy,yll-iy*dxy-(ym-1)*dxy,yll-iy*dxy]
         self.info.ds=[ym,xm]        
-        self.info.skiprows=self.info.skiprows+iy
+        self.info.skiprows=int(self.info.skiprows+iy)
         self.info.usecols=self.info.usecols[(ix0+ix):(ix0+ix+xm)]
-        self.info.max_rows=ym
+        self.info.max_rows=int(ym)
         
         #relate to global domain
         self.info.ixy_local=[0,0]
@@ -236,9 +236,9 @@ class dem(object):
         self.info.extent=[xll,xll+(xm-1)*dxy,yll-(ym-1)*dxy,yll]
         self.info.nodata=nodata
         self.info.ds=[ym,xm];      
-        self.info.skiprows=6+skiprows
-        self.info.usecols=arange(xm).astype('int')+skipcols
-        self.info.max_rows=ym
+        self.info.skiprows=int(6+skiprows)
+        self.info.usecols=arange(xm).astype('int')+int(skipcols)
+        self.info.max_rows=int(ym)
         self.info.depth_limit=depth_limit
                 
         #divide the domain into subdomains       
@@ -2247,6 +2247,7 @@ class dem(object):
                 print('time={:.1f}s, total time={:.1f}s'.format(time.time()-t1,time.time()-t0))
                                       
             #collect dir
+            print('---------{},collect domain ---------------------'.format(header.id))
             S.collect_subdomain_data(name='dir',outname='dir')
             S.info.nodata=Si.info.nodata
 
@@ -2302,16 +2303,16 @@ if __name__=="__main__":
     #SS.write_shapefile('rivers','{}_rivers'.format(SS.headers[0].sname))
 
     #--------case 3------------------------------------------------------------    
-    #ids=['01',]; names=['Gulf_1/gulf_1_dem_usgs_04.asc',]; sname='D'
-    #SS=dem(); SS.proc_demfile(names,ids,sname=sname,depth_limit=[-10,5000],subdomain_size=4e7)
+    ids=['10',]; names=['Gulf_1/gulf_1_dem_usgs_10.asc',]; sname='G'
+    SS=dem(); SS.proc_demfile(names,ids,sname=sname,depth_limit=[-10,5000],subdomain_size=4e7)
     
     #SS.read_data('{}.npz'.format(SS.headers[0].sname))
     #SS.compute_river(acc_limit=1e4)
     #SS.write_shapefile('rivers','{}_rivers'.format(SS.headers[0].sname))
     #--------------case 4
-    S=dem();
-    S.read_data('AG_04.npz')
-    S.fill_depression_global() 
+    #S=dem();
+    #S.read_data('AG_07.npz')
+    #S.fill_depression_global() 
 
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
