@@ -2218,7 +2218,7 @@ class dem(object):
     def smooth_river(self,data,npt_smooth=5):
         
         #parameter
-        ds=S.info.ds; nodata=S.info.nodata
+        ds=self.info.ds; nodata=self.info.nodata
         
         #for each river
         for i in arange(len(self.rivers)):
