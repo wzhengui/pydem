@@ -482,11 +482,18 @@ class dem(object):
         #save domain information
         self.save_data(sname,'headers')
         
-    def compute_river(self,seg=None,sind=None,acc_limit=1e4,nodata=None,apply_mask=False,msg=False):   
+    def compute_river(self,seg=None,sind=None,acc_limit=1e4,area_limit=None,rat_prj=1.11e5,nodata=None,apply_mask=False,msg=False):   
         '''
         compute river network for watersheds 
         seg is segment number, sind is catchment indices. 
+        area_limit: compute river for cell with watershed area>area_limit
+        rat_prj: conversion ratio between projection to meter (default is for lat_long)
         '''
+
+        #compute acc_limit
+        if area_limit is not None:
+           dxy=self.info.header[4]; 
+           acc_limit=area_limit/(dxy*rat_prj)**2
         
         #compute river mouths        
         if sind is not None:
@@ -556,6 +563,7 @@ class dem(object):
             if len(self.rivers[i])>3: inum.append(i)
         self.rivers=array(self.rivers); inum=array(inum)
             
+        if len(self.rivers)==0: return
         #exclude rivers with len<3
         self.rivers=self.rivers[inum]
         
@@ -2169,7 +2177,7 @@ class dem(object):
         
         return yi,xi
     
-    def write_shapefile(self,data,sname,stype='POLYLINE',prjname='epsg:4326',attname=None,attvalue=None):
+    def write_shapefile(self,sname,data='rivers',stype='POLYLINE',prjname='epsg:4326',attname=None,attvalue=None):
         '''
         data: string name or data
         sname: shapefile name
@@ -2219,6 +2227,7 @@ class dem(object):
         #read each dem information 
         for m in findex:
             header=self.headers[m]
+            if os.path.exists('{}.npz'.format(header.sname)): continue
             
             t0=time.time(); S=dem();           
             #read diminfo           
@@ -2275,6 +2284,7 @@ class dem(object):
       
             dt=time.time()-t0
             print('total time={:.1f}s'.format(time.time()-t0))
+            sys.stdout.flush()
                          
 if __name__=="__main__":    
     close('all')
@@ -2326,8 +2336,8 @@ if __name__=="__main__":
     # SS.proc_demfile(sname=sname,findex=findex,subdomain_size=2e7)
     
     #--------case 5-----------------------------------------------------------
-    SS=dem(); SS.read_data('AG_09.npz')
-    SS.fill_depression_global()
+    # SS=dem(); SS.read_data('AG_09.npz')
+    # SS.fill_depression_global()
     # S=dem(); S.read_data('A09.npz')
     # colors=['r','g','b']
     # for i in arange(3):
@@ -2337,7 +2347,12 @@ if __name__=="__main__":
     # sind=nonzero(S.seg.ravel()==20667)[0]; iy,ix=unravel_index(sind,S.info.ds)
     # plot(ix,iy,'k.')
         
-        
+    #------------------------
+    S=dem(); S.read_data('Gulf_1/G_04.npz')
+    S.compute_watershed()
+    S.compute_river(area_limit=1e6                )
+    # S.write_shapefile('{}_{}')
+
     
     
 #------------------------------------------------------------------------------

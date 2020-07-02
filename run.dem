@@ -9,6 +9,8 @@ ids=[*arange(4,16),*arange(30,36),*arange(40,46)]; ids=['{:02}'.format(i) for i 
 names=['gulf_1_dem_usgs_{}.asc'.format(i) for i in ids]
 bdir='Gulf_1'
 sname='G' #name for save
+depth_limit=[-2,1e5] #for pre-proc dem
+area_limit=1e6 #for compute river
 
 #parameter for batch job
 nnode=13; ppn=1; nproc=nnode*ppn
@@ -30,14 +32,14 @@ if param==None and job_on_node==None:
 
    #save information of dem files
    if not os.path.exists('{}.npz'.format(sname)):
-      S=dem(); S.read_files_info(names,ids,sname=sname,depth_limit=[-2,5e3],plot_domain=True)
+      S=dem(); S.read_files_info(names,ids,sname=sname,depth_limit=depth_limit,plot_domain=True)
 
    #submit job
    os.system('qsub {} -N {} -v param="{} {}" -q {} -e {}.e -o {}.o -l nodes={}:ppn={} -l walltime={}'.format(code,sname,bdir,code,qname,sname,sname,nnode,ppn,walltime)); 
    sys.exit()
 
 #submit jobs
-if ob_on_node==None:
+if job_on_node==None:
    bdir,code=os.getenv('param').split(); os.chdir(bdir)
    os.system('mpiexec -np {} --env job_on_node 1 {} >>screen.out'.format(nproc,code))
    sys.exit()
@@ -52,12 +54,19 @@ comm.Barrier()
 #distribute jobs
 findex=[]
 for ifile in arange(len(names)):
-    if mod(ifile,nproc)==myrank and (not os.path.exists('{}_{}.npz'.format(sname,ids[ifile]))): findex.append(ifile)
+    if mod(ifile,nproc)==myrank: findex.append(ifile)
 findex=array(findex)
-
-print(myrank,':',findex,ids[findex])
 
 #proc dem
 if len(findex)!=0:
-   #S=dem(); S.proc_demfile(sname=sname,findex=findex,subdomain_size=2e7)
-   print(myrank,':',findex,ids[findex])
+   #compute dir
+   S=dem(); S.proc_demfile(sname=sname,findex=findex,subdomain_size=2e7)
+
+   #compute watershed,and river
+   for ifile in findex:
+       S=dem(); S.read_data('{}_{}.npz'.format(sname,ids[ifile]))
+       S.compute_watershed()
+       S.compute_river(area_limit=area_limit)
+       if len(S.rivers)==0:continue
+       S.write_shapefile('{}_{}'.format(sname,ids[ifile]))
+
