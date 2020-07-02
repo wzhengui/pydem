@@ -2177,7 +2177,7 @@ class dem(object):
         
         return yi,xi
     
-    def write_shapefile(self,sname,data='rivers',stype='POLYLINE',prjname='epsg:4326',attname=None,attvalue=None):
+    def write_shapefile(self,sname,data='rivers',stype='POLYLINE',prjname='epsg:4326',attname=None,attvalue=None,npt_smooth=None):
         '''
         data: string name or data
         sname: shapefile name
@@ -2209,8 +2209,44 @@ class dem(object):
         SF.xy=array(SF.xy)
         if SF.xy.ndim==3: SF.xy=squeeze(SF.xy)
         
+        if npt_smooth is not None:
+            SF.xy=self.smooth_river(SF.xy,npt_smooth=npt_smooth)
+        
         #write shapefile
         write_shapefile_data(sname,SF)
+        
+    def smooth_river(self,data,npt_smooth=5):
+        
+        #parameter
+        ds=S.info.ds; nodata=S.info.nodata
+        
+        #for each river
+        for i in arange(len(self.rivers)):
+            river=self.rivers[i]; rxy=data[i].copy()
+            sind_unique,fpu,npt_unique=unique(river,return_inverse=True,return_counts=True)
+            npt=npt_unique[fpu]; npt[river==S.info.nodata]==-1;
+            
+            #for each section
+            sids=nonzero((npt>1)|(npt==-1))[0]
+            
+            for m in arange(len(sids)):
+                #get subsection indices
+                if m==0:                    
+                    id1=0; 
+                else:
+                    id1=sids[m-1]; 
+                id2=sids[m]
+                if river[id1]==nodata: id1=id1+1
+                if river[id2]!=nodata: id2=id2+1
+                if (id2-id1)<(npt_smooth+2): continue
+            
+                #smooth river section, keep front and end pts unchanged
+                srxi=smooth(rxy[id1:id2,0].copy(),npt_smooth); sryi=smooth(rxy[id1:id2,1].copy(),npt_smooth)
+                rxy[(id1+1):(id2-1),0]=srxi[1:-1]; rxy[(id1+1):(id2-1),1]=sryi[1:-1]; 
+            data[i]=rxy
+            
+        return data   
+           
         
     def proc_demfile(self,names=None,ids=None,sname=None,findex=None,depth_limit=[-1e5,1e4],subdomain_size=1e6,offset=1):
         
@@ -2348,10 +2384,14 @@ if __name__=="__main__":
     # plot(ix,iy,'k.')
         
     #------------------------
-    S=dem(); S.read_data('Gulf_1/G_04.npz')
-    S.compute_watershed()
-    S.compute_river(area_limit=1e6                )
-    # S.write_shapefile('{}_{}')
+    # S=dem(); S.read_data('Gulf_1/G_31.npz')
+    # S.compute_watershed()
+    # S.compute_river(area_limit=1e6 )
+    # S.write_shapefile('G31',smooth=3)
+    # S.save_data('G31_river',['rivers','info'])
+    
+    S=dem(); S.read_data('G31_river.npz')
+    S.write_shapefile('G31',npt_smooth=20)
 
     
     
