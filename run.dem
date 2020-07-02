@@ -1,0 +1,63 @@
+#!/usr/bin/env python3
+from pylib import *
+sys.path.append("/home/zwang/pysheds/dem_rivers");
+from pydem import *
+
+#-------------------------------------------------------------------------------------------
+#information about DEM files
+ids=[*arange(4,16),*arange(30,36),*arange(40,46)]; ids=['{:02}'.format(i) for i in ids]; ids.extend(['010','011'])
+names=['gulf_1_dem_usgs_{}.asc'.format(i) for i in ids]
+bdir='Gulf_1'
+sname='G' #name for save
+
+#parameter for batch job
+nnode=13; ppn=1; nproc=nnode*ppn
+#qname='skylake' 
+qname='haswell'
+walltime='20:00:00'
+
+#-------------------------------------------------------------------------------------------
+#get script name and dir
+code=sys.argv[0]; 
+bdir=os.path.abspath('./{}'.format(bdir))
+param=os.getenv('param'); job_on_node=os.getenv('job_on_node')
+
+
+#on front node
+if param==None and job_on_node==None:
+   #copy code into bdir
+   os.system('cp {} {}'.format(code,bdir)); os.chdir(bdir); 
+
+   #save information of dem files
+   if not os.path.exists('{}.npz'.format(sname)):
+      S=dem(); S.read_files_info(names,ids,sname=sname,depth_limit=[-2,5e3],plot_domain=True)
+
+   #submit job
+   os.system('qsub {} -N {} -v param="{} {}" -q {} -e {}.e -o {}.o -l nodes={}:ppn={} -l walltime={}'.format(code,sname,bdir,code,qname,sname,sname,nnode,ppn,walltime)); 
+   sys.exit()
+
+#submit jobs
+if ob_on_node==None:
+   bdir,code=os.getenv('param').split(); os.chdir(bdir)
+   os.system('mpiexec -np {} --env job_on_node 1 {} >>screen.out'.format(nproc,code))
+   sys.exit()
+
+#proc dem on each proc
+from mpi4py import MPI
+comm = MPI.COMM_WORLD
+nproc  = comm.Get_size()
+myrank = comm.Get_rank();
+comm.Barrier()
+
+#distribute jobs
+findex=[]
+for ifile in arange(len(names)):
+    if mod(ifile,nproc)==myrank and (not os.path.exists('{}_{}.npz'.format(sname,ids[ifile]))): findex.append(ifile)
+findex=array(findex)
+
+print(myrank,':',findex,ids[findex])
+
+#proc dem
+if len(findex)!=0:
+   #S=dem(); S.proc_demfile(sname=sname,findex=findex,subdomain_size=2e7)
+   print(myrank,':',findex,ids[findex])

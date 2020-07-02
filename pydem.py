@@ -291,7 +291,7 @@ class dem(object):
                 sinfo.nodata=nodata
                 sinfo.ds=[dy,dx]                
                 sinfo.skiprows=int(6+iy+skiprows)
-                sinfo.usecols=arange(ix,ix+dx).astype('int')+int(skiprows)
+                sinfo.usecols=arange(ix,ix+dx).astype('int')+int(skipcols)
                 sinfo.max_rows=int(dy)
                 sinfo.depth_limit=depth_limit
                                 
@@ -1247,7 +1247,7 @@ class dem(object):
             sind_bnd_all=array(sind_bnd_all); h0_all=array(h0_all); ids=array(ids)
             
             #length of routes
-            len_stream=self.search_downstream(sind_bnd_all,ireturn=4,msg=msg)
+            len_stream=self.search_downstream(sind_bnd_all,ireturn=4,level_max=50,msg=msg)
             
             #sort by length
             for i in arange(slen):
@@ -1274,11 +1274,18 @@ class dem(object):
             #compare segment depth        
             flag_true=h_true<tile(h0_all,8)[fpt]        
             if sum(flag_true)==0: 
-                sind_true_unique, fpu=unique(sind_true,return_inverse=True)
-                sindc,iA,iB=intersect1d(sind_true_unique,sind0,return_indices=True)
-                sind_true_unique[iA]=nodata
-                flag_true=sind_true_unique[fpu]!=nodata
-                    
+                seg_true_unique,fpu=unique(seg_true,return_inverse=True)
+                segc,iA,iB=intersect1d(seg_true_unique,seg0,return_indices=True)
+                seg_true_unique[iA]=nodata
+                flag_true=seg_true_unique[fpu]!=nodata  
+                #if flag_true is still all false,exclude the large seg
+                if sum(flag_true)==0:
+                    sid=nonzero(len_seg==max(len_seg))[0][0]; seg0_left=setdiff1d(seg0,seg0[sid])
+                    seg_true_unique,fpu=unique(seg_true,return_inverse=True)
+                    segc,iA,iB=intersect1d(seg_true_unique,seg0_left,return_indices=True)
+                    seg_true_unique[iA]=nodata
+                    flag_true=seg_true_unique[fpu]!=nodata  
+
             #create flag             
             flag_all=zeros([8,len(sind_bnd_all)])==1; flag_all.ravel()[fpt]=flag_true
             seg_all=-ones([8,len(sind_bnd_all)]).astype('int'); seg_all.ravel()[fpt]=seg_true
@@ -1309,7 +1316,7 @@ class dem(object):
                 dir_min.append(dirn[id][fp[0]])
                 seg_min.append(segn[id][fp[0]])
             fpo=array(fpo); sind_min=array(sind_min); dir_min=array(dir_min); seg_min=array(seg_min)
-            
+                        
             #save index and dir along the shortest route    
             sind_streams=self.search_downstream(sind_min,ireturn=2,msg=msg)
             sind_all=[]; dir_all=[]
@@ -1386,6 +1393,7 @@ class dem(object):
         #return how many neighboring indices with same elevation
         isum=self.search_flat(sind0,ireturn=1,zlimit=zlimit) #indices of flat
         fp=isum>0; sind0=sind0[fp]
+        if sind0.size==0: return
         
         #obtain flat cell indices
         sind_flat=self.search_flat(sind0,ireturn=3,zlimit=zlimit); #sind_flat=unique(sind_flat)
@@ -2218,7 +2226,7 @@ class dem(object):
             
             #if data size is smaller than subdomain_size, read the whole data
             # if prod(S.info.ds)<subdomain_size: S.read_demdata()
-            
+          
             #--------------------------------------------------------------------------                        
             print('-------------global domain {} is divided to: {} subdomains------------'.format(header.id,S.info.nsubdomain))
             #compute dir on each subdomain
@@ -2227,32 +2235,33 @@ class dem(object):
                 print('--------------------------------------------------------------')
                 print('---------{},work on depression: subdomain {}---------------------'.format(header.id,i+1))
                 print('--------------------------------------------------------------')
-                        
+                  
                 Si=S.domains[i]; 
                 if hasattr(S,'dem'):
                     Si.read_demdata(data=S.dem)    
                 else:
                     Si.read_demdata()    
-                                    
+                                
                 Si.compute_dir();
-                
+            
                 #if Si is a subdomain, save bnd info for collecting
                 if S.info.nsubdomain>1:            
                     Si.collapse_subdomain();              
                     Si.change_bnd_dir()     
-                                       
+                                   
                 #resolve flat and fill depression
                 Si.fill_depression(level_max=100,method=0)
                 delattr(Si,'dem');
                 print('time={:.1f}s, total time={:.1f}s'.format(time.time()-t1,time.time()-t0))
-                                      
+                sys.stdout.flush()
+                                     
             #collect dir
             print('---------{},collect domain ---------------------'.format(header.id))
             S.collect_subdomain_data(name='dir',outname='dir')
             S.info.nodata=Si.info.nodata
 
             S.save_data('A{}'.format(header.sname),['dir','info'])
-            sys.exit()
+            #continue
             
             #fill global depression            
             if S.info.nsubdomain>1:
@@ -2262,6 +2271,7 @@ class dem(object):
             S.compute_watershed()
             #S.save_data(header.sname,['dir','acc','seg','info'])
             S.save_data(header.sname,['dir','info'])
+            os.system('rm A{}.npz'.format(header.sname))
       
             dt=time.time()-t0
             print('total time={:.1f}s'.format(time.time()-t0))
@@ -2303,17 +2313,33 @@ if __name__=="__main__":
     #SS.write_shapefile('rivers','{}_rivers'.format(SS.headers[0].sname))
 
     #--------case 3------------------------------------------------------------    
-    ids=['10',]; names=['Gulf_1/gulf_1_dem_usgs_10.asc',]; sname='G'
-    SS=dem(); SS.proc_demfile(names,ids,sname=sname,depth_limit=[-10,5000],subdomain_size=4e7)
+    #ids=['08',]; names=['Gulf_1/gulf_1_dem_usgs_08.asc',]; sname='A'
+    #SS=dem(); SS.proc_demfile(names,ids,sname=sname,depth_limit=[-2,5000],subdomain_size=2e7)
     
     #SS.read_data('{}.npz'.format(SS.headers[0].sname))
     #SS.compute_river(acc_limit=1e4)
     #SS.write_shapefile('rivers','{}_rivers'.format(SS.headers[0].sname))
-    #--------------case 4
-    #S=dem();
-    #S.read_data('AG_07.npz')
-    #S.fill_depression_global() 
 
+    #--------case 4-----------------------------------------------------------
+    # sname='G';findex=array([23]) 
+    # SS=dem(); SS.read_data('G.npz')
+    # SS.proc_demfile(sname=sname,findex=findex,subdomain_size=2e7)
+    
+    #--------case 5-----------------------------------------------------------
+    SS=dem(); SS.read_data('AG_09.npz')
+    SS.fill_depression_global()
+    # S=dem(); S.read_data('A09.npz')
+    # colors=['r','g','b']
+    # for i in arange(3):
+    #     iy,ix=unravel_index(S.boundary[i],S.info.ds)
+    #     plot(ix,iy,'-',color=colors[i])
+    
+    # sind=nonzero(S.seg.ravel()==20667)[0]; iy,ix=unravel_index(sind,S.info.ds)
+    # plot(ix,iy,'k.')
+        
+        
+    
+    
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------    
