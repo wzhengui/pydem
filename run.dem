@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 from pylib import *
-sys.path.append("/home/zwang/pysheds/dem_rivers");
+sys.path.append("/home/zwang/pysheds/pydem");
 from pydem import *
 
 #-------------------------------------------------------------------------------------------
@@ -68,5 +68,5 @@ if len(findex)!=0:
        S.compute_watershed()
        S.compute_river(area_limit=area_limit)
        if len(S.rivers)==0:continue
-       S.write_shapefile('{}_{}'.format(sname,ids[ifile]))
+       S.write_shapefile('{}_{}'.format(sname,ids[ifile]),npt_smooth=20)
 

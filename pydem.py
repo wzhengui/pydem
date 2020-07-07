@@ -456,28 +456,28 @@ class dem(object):
                 self.headers.append(header)                    
     
             #plot domains before and after removing overlapping zone
-            if plot_domain:
-               colors=['r','g','b','k','m']
-               figure(figsize=[12,10])
-               subplot(2,1,1)
-               for i in arange(nfile):
-                   x1,x2,y1,y2=diminfo0[i][:4] 
-                   xi=array([x1,x2,x2,x1,x1]); yi=array([y1,y1,y2,y2,y1])
-                   plot(xi,yi,'-',color=colors[mod(i,5)],alpha=0.6) 
-                   text((x1+x2)/2,(y1+y2)/2,ids[i],color=colors[mod(i,5)],alpha=0.6)
-               title('domains of each dem files: original')
+            #if plot_domain:
+            #   colors=['r','g','b','k','m']
+            #   figure(figsize=[12,10])
+            #   subplot(2,1,1)
+            #   for i in arange(nfile):
+            #       x1,x2,y1,y2=diminfo0[i][:4] 
+            #       xi=array([x1,x2,x2,x1,x1]); yi=array([y1,y1,y2,y2,y1])
+            #       plot(xi,yi,'-',color=colors[mod(i,5)],alpha=0.6) 
+            #       text((x1+x2)/2,(y1+y2)/2,ids[i],color=colors[mod(i,5)],alpha=0.6)
+            #   title('domains of each dem files: original')
          
-               subplot(2,1,2)
-               for i in arange(nfile):
-                   x1,x2,y1,y2=diminfo[i][:4] 
-                   xi=array([x1,x2,x2,x1,x1]); yi=array([y1,y1,y2,y2,y1])
-                   xi=array([x1,x2,x2,x1,x1]); yi=array([y1,y1,y2,y2,y1])
-                   plot(xi,yi,'-',color=colors[mod(i,5)],alpha=0.6) 
-                   text((x1+x2)/2,(y1+y2)/2,ids[i],color=colors[mod(i,5)],alpha=0.6)
-               title('domains of each dem files: removing overlapping zone')
-               gcf().tight_layout()
-               savefig('dem_domains_overlap')
-               close()
+              # subplot(2,1,2)
+              # for i in arange(nfile):
+              #     x1,x2,y1,y2=diminfo[i][:4] 
+              #     xi=array([x1,x2,x2,x1,x1]); yi=array([y1,y1,y2,y2,y1])
+              #     xi=array([x1,x2,x2,x1,x1]); yi=array([y1,y1,y2,y2,y1])
+              #     plot(xi,yi,'-',color=colors[mod(i,5)],alpha=0.6) 
+              #     text((x1+x2)/2,(y1+y2)/2,ids[i],color=colors[mod(i,5)],alpha=0.6)
+              # title('domains of each dem files: removing overlapping zone')
+              # gcf().tight_layout()
+              # savefig('dem_domains_overlap')
+              # close()
         
         #save domain information
         self.save_data(sname,'headers')
@@ -1347,9 +1347,10 @@ class dem(object):
                 if len(segc)==0: break
                 seg_min_final[iB]=seg_min[iA]
                 
-            id_min_final=-ones(len(seg_min_final)).astype('int')
-            segc,iA,iB=intersect1d(seg0,seg_min_final,return_indices=True)
-            id_min_final[iB]=iA
+            seg_min_final_unique,fpu=unique(seg_min_final,return_inverse=True)
+            segc,iA,iB=intersect1d(seg0,seg_min_final_unique,return_indices=True)
+            id_min_final_unique=-ones(len(seg_min_final_unique)).astype('int')
+            id_min_final_unique[iB]=iA; id_min_final=id_min_final_unique[fpu]
             
             #assign sind_segs, S.boundary 
             for i in arange(len(fpo)):
@@ -2224,7 +2225,7 @@ class dem(object):
         for i in arange(len(self.rivers)):
             river=self.rivers[i]; rxy=data[i].copy()
             sind_unique,fpu,npt_unique=unique(river,return_inverse=True,return_counts=True)
-            npt=npt_unique[fpu]; npt[river==S.info.nodata]==-1;
+            npt=npt_unique[fpu]; npt[river==nodata]==-1;
             
             #for each section
             sids=nonzero((npt>1)|(npt==-1))[0]
@@ -2252,7 +2253,8 @@ class dem(object):
         
         #read file informations
         if not os.path.exists('{}.npz'.format(sname)):
-            self.read_files_info(names,ids,sname=sname,depth_limit=depth_limit,plot_domain=True)        
+            #self.read_files_info(names,ids,sname=sname,depth_limit=depth_limit,plot_domain=True)        
+            self.read_files_info(names,ids,sname=sname,depth_limit=depth_limit,plot_domain=False)        
         else:
             self.read_data('{}.npz'.format(sname))
         nfile=len(self.headers)        
