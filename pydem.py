@@ -6,20 +6,24 @@ class dem(object):
     def __init__(self):
         pass      
     
-    def read_data(self,path):
+    def read_data(self,path,svar=None):
         '''
         read data of *.npz format
         '''        
-        #read data
-        data=loadz(path)
-        
-        #get variable name
-        svars=list(data.__dict__.keys())
-        if 'VINFO' in svars: svars.remove('VINFO')
-        
-        #put variables in self
-        for svar in svars:
-            exec('self.{}=data.{}'.format(svar,svar))
+        if svar is None:
+            #read data
+            data=loadz(path)
+            
+            #get variable name
+            svars=list(data.__dict__.keys())
+            if 'VINFO' in svars: svars.remove('VINFO')
+            
+            #put variables in self
+            for svar in svars:
+                exec('self.{}=data.{}'.format(svar,svar))
+        else:
+            fid=load(path,allow_pickle=True)            
+            return fid[svar][()]                
             
     def save_data(self,fname,svars):
         '''
@@ -450,6 +454,8 @@ class dem(object):
                 header.name=names[i]
                 header.sname='{}_{}'.format(sname,ids[i])
                 header.depth_limit=depth_limit
+                header.names=names
+                header.ids=ids
                 header.nbs=nbs[i]
                 header.skipcols=skipcols[i]
                 header.skiprows=skiprows[i]
@@ -650,13 +656,14 @@ class dem(object):
         if ireturn==0:
             #add external acc
             if hasattr(self.info,'sind_ext'):
-                sind_list=self.search_downstream(self.info.sind_ext,ireturn=2)
-                sind_all=[]; acc_all=[]
-                for i in arange(len(self.info.sind_ext)):
-                    sind_all.extend(sind_list[i])
-                    acc_all.extend(ones(len(sind_list[i]))*self.info.acc_ext[i])
-                sind_all=array(sind_all); acc_all=array(acc_all)
-                self.acc.ravel()[sind_all]=self.acc.ravel()[sind_all]+acc_all
+                if len(self.info.sind_ext)!=0:
+                    sind_list=self.search_downstream(self.info.sind_ext,ireturn=2)
+                    sind_all=[]; acc_all=[]
+                    for i in arange(len(self.info.sind_ext)):
+                        sind_all.extend(sind_list[i])
+                        acc_all.extend(ones(len(sind_list[i]))*self.info.acc_ext[i])
+                    sind_all=array(sind_all); acc_all=array(acc_all)
+                    self.acc.ravel()[sind_all]=self.acc.ravel()[sind_all]+acc_all
             
             print('---------sort watershed number--------------------------------')
             #reorder segment number
@@ -2271,7 +2278,13 @@ class dem(object):
             data[i]=rxy
             
         return data   
-           
+          
+    def compute_sind_ext(self,findex=None):
+        '''
+        compute additional acc at the bounary, these acc are from other DEMs        
+        '''
+        pass
+        return
         
     def proc_demfile(self,names=None,ids=None,sname=None,findex=None,depth_limit=[-1e5,1e4],subdomain_size=1e6,offset=1):
         
