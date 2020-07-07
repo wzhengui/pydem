@@ -631,7 +631,7 @@ class dem(object):
         #add boundary info        
         #self.info.bseg=seg
     
-    def compute_watershed(self,msg=False):
+    def compute_watershed(self,msg=False,ireturn=0):
         '''        
         acc_max: compute acc and segment number for all watersheds
         '''
@@ -644,6 +644,11 @@ class dem(object):
         print('---------compute watershed------------------------------------')
         #initialize acc        
         self.search_upstream(sind0,ireturn=3,level_max=100,msg=msg)
+        
+        #save boundary acc and return
+        if ireturn==1:
+            pass
+        
         
         print('---------sort watershed number--------------------------------')
         #reorder segment number
@@ -2253,8 +2258,7 @@ class dem(object):
         
         #read file informations
         if not os.path.exists('{}.npz'.format(sname)):
-            #self.read_files_info(names,ids,sname=sname,depth_limit=depth_limit,plot_domain=True)        
-            self.read_files_info(names,ids,sname=sname,depth_limit=depth_limit,plot_domain=False)        
+            self.read_files_info(names,ids,sname=sname,depth_limit=depth_limit,plot_domain=True)        
         else:
             self.read_data('{}.npz'.format(sname))
         nfile=len(self.headers)        
@@ -2307,18 +2311,15 @@ class dem(object):
             S.collect_subdomain_data(name='dir',outname='dir')
             S.info.nodata=Si.info.nodata
 
-            S.save_data('A{}'.format(header.sname),['dir','info'])
-            #continue
-            
             #fill global depression            
             if S.info.nsubdomain>1:
                 S.fill_depression_global() 
             
-            #save information
+            #save acc at boundary
             S.compute_watershed()
-            #S.save_data(header.sname,['dir','acc','seg','info'])
+            
+            #save information
             S.save_data(header.sname,['dir','info'])
-            os.system('rm A{}.npz'.format(header.sname))
       
             dt=time.time()-t0
             print('total time={:.1f}s'.format(time.time()-t0))
