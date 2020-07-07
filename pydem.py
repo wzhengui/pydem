@@ -480,7 +480,8 @@ class dem(object):
               # close()
         
         #save domain information
-        self.save_data(sname,'headers')
+        if len(names)!=1:
+            self.save_data(sname,'headers')
         
     def compute_river(self,seg=None,sind=None,acc_limit=1e4,area_limit=None,rat_prj=1.11e5,nodata=None,apply_mask=False,msg=False):   
         '''
@@ -645,17 +646,28 @@ class dem(object):
         #initialize acc        
         self.search_upstream(sind0,ireturn=3,level_max=100,msg=msg)
         
-        #save boundary acc and return
-        if ireturn==1:
-            pass
         
-        
-        print('---------sort watershed number--------------------------------')
-        #reorder segment number
-        acc0=self.acc.ravel()[sind0]; ind=flipud(argsort(acc0)); sind=sind0[ind]; 
-        seg=arange(len(sind)).astype('int')+1
-        self.search_upstream(sind,ireturn=3,seg=seg,level_max=100,msg=msg) 
-        
+        if ireturn==0:
+            #add external acc
+            if hasattr(self.info,'sind_ext'):
+                sind_list=self.search_downstream(self.info.sind_ext,ireturn=2)
+                sind_all=[]; acc_all=[]
+                for i in arange(len(self.info.sind_ext)):
+                    sind_all.extend(sind_list[i])
+                    acc_all.extend(ones(len(sind_list[i]))*self.info.acc_ext[i])
+                sind_all=array(sind_all); acc_all=array(acc_all)
+                self.acc.ravel()[sind_all]=self.acc.ravel()[sind_all]+acc_all
+            
+            print('---------sort watershed number--------------------------------')
+            #reorder segment number
+            acc0=self.acc.ravel()[sind0]; ind=flipud(argsort(acc0)); sind=sind0[ind]; 
+            seg=arange(len(sind)).astype('int')+1
+            self.search_upstream(sind,ireturn=3,seg=seg,level_max=100,msg=msg) 
+        else:
+            #save boundary acc and return
+            if len(setdiff1d(sind0,self.info.sind_bnd))!=0: sys.exit('sind0-sind_bnd!=0')
+            self.info.sind0=sind0
+            self.info.acc0=self.acc.ravel()[sind0]        
         return
                                 
     def compute_dir(self,data='dem',outname='dir',subdomain_size=1e5,zlimit=0,method=0):
@@ -2243,11 +2255,18 @@ class dem(object):
                     id1=sids[m-1]; 
                 id2=sids[m]
                 if river[id1]==nodata: id1=id1+1
-                if river[id2]!=nodata: id2=id2+1
-                if (id2-id1)<(npt_smooth+2): continue
+                if river[id2]!=nodata: id2=id2+1                
+                
+                #modify smooth pts
+                if (id2-id1)<3: 
+                    continue                
+                elif (id2-id1)<(npt_smooth+2):                
+                    npt_smooth_final=(id2-id1)-2
+                else:
+                    npt_smooth_final=npt_smooth
             
                 #smooth river section, keep front and end pts unchanged
-                srxi=smooth(rxy[id1:id2,0].copy(),npt_smooth); sryi=smooth(rxy[id1:id2,1].copy(),npt_smooth)
+                srxi=smooth(rxy[id1:id2,0].copy(),npt_smooth_final); sryi=smooth(rxy[id1:id2,1].copy(),npt_smooth_final)
                 rxy[(id1+1):(id2-1),0]=srxi[1:-1]; rxy[(id1+1):(id2-1),1]=sryi[1:-1]; 
             data[i]=rxy
             
@@ -2316,7 +2335,7 @@ class dem(object):
                 S.fill_depression_global() 
             
             #save acc at boundary
-            S.compute_watershed()
+            S.compute_watershed(ireturn=1)
             
             #save information
             S.save_data(header.sname,['dir','info'])
@@ -2338,12 +2357,13 @@ if __name__=="__main__":
     # names=['Z:\pysheds\Gulf_1\gulf_1_dem_usgs_{}.asc'.format(i) for i in ids]
     
     #----------case 1----------------------------------------------------------
-    # ids=['01',]; names=['GEBCO.asc',]; sname='A';
-    # SS=dem(); SS.proc_demfile(names,ids,sname=sname,depth_limit=[-10,5000],subdomain_size=1e6)
+    ids=['01',]; names=['GEBCO.asc',]; sname='A';
+    SS=dem(); SS.proc_demfile(names,ids,sname=sname,depth_limit=[0,5000],subdomain_size=1e6)
     
-    # SS.read_data('{}.npz'.format(SS.headers[0].sname))
-    # SS.compute_river(acc_limit=5e2)
-    # SS.write_shapefile('rivers','{}_rivers'.format(SS.headers[0].sname))
+    SS.read_data('{}.npz'.format(SS.headers[0].sname))
+    SS.compute_watershed()
+    SS.compute_river(area_limit=2e8)
+    SS.write_shapefile('{}_rivers'.format(SS.headers[0].sname),npt_smooth=5)
     
     #--------case 2------------------------------------------------------------    
     # ids=['01',]; names=['ne_atl_crm_v1.asc',]; sname='B'
@@ -2393,8 +2413,8 @@ if __name__=="__main__":
     # S.write_shapefile('G31',smooth=3)
     # S.save_data('G31_river',['rivers','info'])
     
-    S=dem(); S.read_data('G31_river.npz')
-    S.write_shapefile('G31',npt_smooth=20)
+    # S=dem(); S.read_data('G31_river.npz')
+    # S.write_shapefile('G31',npt_smooth=20)
 
     
     
