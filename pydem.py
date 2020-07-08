@@ -349,9 +349,12 @@ class dem(object):
             header.diminfo=diminfo0[0]
             header.id=ids[0]
             header.name=names[0]
+            header.sname0=sname
             header.sname='{}_{}'.format(sname,ids[0])
             header.depth_limit=depth_limit
             header.nbs=[]
+            header.names=names
+            header.ids=ids
             header.skipcols=0
             header.skiprows=0
             self.headers.append(header) 
@@ -452,6 +455,7 @@ class dem(object):
                 header.diminfo=diminfo[i]
                 header.id=ids[i]
                 header.name=names[i]
+                header.sname0=sname
                 header.sname='{}_{}'.format(sname,ids[i])
                 header.depth_limit=depth_limit
                 header.names=names
@@ -671,10 +675,21 @@ class dem(object):
             seg=arange(len(sind)).astype('int')+1
             self.search_upstream(sind,ireturn=3,seg=seg,level_max=100,msg=msg) 
         else:
-            #save boundary acc and return
+            #save boundary acc
+            sind0=sort(sind0)
             if len(setdiff1d(sind0,self.info.sind_bnd))!=0: sys.exit('sind0-sind_bnd!=0')
-            self.info.sind0=sind0
-            self.info.acc0=self.acc.ravel()[sind0]        
+            self.info.sind0=sind0; self.info.acc0=self.acc.ravel()[sind0]        
+            sindc,iA,iB=intersect1d(sind0,self.info.sind_bnd,return_indices=True)
+            if not array_equal(sindc,0): sys.exit('sind0!=sind_unique')
+            self.info.dem0=self.info.dem_bnd[iB].copy()
+            
+            #save seg depth
+            sind=self.search_downstream(self.info.sind_bnd,ireturn=1)
+            sind_unique,fpu=unique(sind,return_inverse=True)
+            sindc,iA,iB=intersect1d(sind_unique,self.info.sind_bnd,return_indices=True)
+            if not array_equal(sindc,sind_unique): sys.exit('sindc!=sind_unique')
+            self.info.dem_bnd0=self.info.dem_bnd[iB][fpu].copy()
+            
         return
                                 
     def compute_dir(self,data='dem',outname='dir',subdomain_size=1e5,zlimit=0,method=0):
@@ -2279,11 +2294,48 @@ class dem(object):
             
         return data   
           
-    def compute_sind_ext(self,findex=None):
+    def compute_sind_ext(self,dis_limit=None):
         '''
         compute additional acc at the bounary, these acc are from other DEMs        
         '''
-        pass
+        if len(self.info.nbs)==0: return
+        
+        #determin dis_limit
+        if dis_limit=None: 
+            dis_limit=2*self.info.header[-1]            
+        
+        #collect bnd info from other DEMs
+        sind_all=[]; dem_all=[]; acc_all=[]; sx_all=[]; sy_all=[];
+        for i in arange(len(self.info.nbs)):
+            fname='{}_{}.npz'.format(self.info.sname0,self.info.names[self.info.nbs[i]])
+            sinfo=self.read_data(fname,svar='info')
+            sind=sinfo.sind0; yi,xi=self.get_coordinates(sind,header=sinfo.header)
+            sind_all.extend(sind); dem_all.extend(sinfo.dem0); acc_all.extend(sinfo.acc0)
+            sx_all.extend(xi); sy_all.extend(yi)
+        sind_all=array(sind_all); dem_all=array(dem_all); acc_all=array(acc_all); sx_all=array(sx_all); sy_all=array(sy_all)
+        if len(sind_all)==0: return
+        
+        #present sind_bnd
+        sind=self.info.sind_bnd; dem=self.info.dem_bnd0; ly,lx=self.get_coordinates(sind)
+        
+        #exclude pts too far
+        fp=~((sx_all<(min(lx)-dis_limit))|(sx_all>(max(lx)+dis_limit))|(sy_all<(min(ly)-dis_limit))|(sy_all<(max(ly)+dis_limit)))
+        if sum(fp)==0: return
+        sind_all=sind_all[fp]; dem_all=dem_all[fp]; acc_all=acc_all[fp]; sx_all=sx_all[fp]; sy_all=sy_all[fp]
+        
+        #index of nearest pts
+        ids=near_pts(c_[sx_all,sy_all],c_[lx,ly])
+        sdist=abs((lx[ids]-sx_all)+1j*(ly[ids]-sy_all))        
+        fp=(sdist<dis_limit)*(dem<dem_all)        
+
+        acc_all_ext=acc_all[fp]; sind_all_ext=sind[ids][fp]        
+        sind_ext,fpu,npt_unique=unique(sind_all_ext,return_inverse=True,return_counts=True)
+        acc_ext=zeros(len(sind_ext)).astype('int')
+        for i in arange(len(acc_all_ext)):
+            acc_ext[fpu[i]]=acc_ext[fpu[i]]+acc_all_ext
+
+        self.info.sind_ext=sind_ext; self.info.acc_ext=acc_ext          
+        
         return
         
     def proc_demfile(self,names=None,ids=None,sname=None,findex=None,depth_limit=[-1e5,1e4],subdomain_size=1e6,offset=1):
@@ -2342,13 +2394,22 @@ class dem(object):
             print('---------{},collect domain ---------------------'.format(header.id))
             S.collect_subdomain_data(name='dir',outname='dir')
             S.info.nodata=Si.info.nodata
-
-            #fill global depression            
+            
             if S.info.nsubdomain>1:
+                #fill global depression            
                 S.fill_depression_global() 
+            else:
+                #update bnd info
+                S.info.sind_bnd=S.info.sind_bnd_local.copy(); delattr(S.info,'sind_bnd_local');
+                S.info.dir_bnd=S.info.dir_bnd_local.copy(); delattr(S.info,'dir_bnd_local');
+                S.info.dem_bnd=S.info.dem_bnd_local.copy(); delattr(S.info,'dem_bnd_local');         
+            
+            #save DEMs info
+            S.info.names=header.names; S.info.ids=header.ids; S.info.nbs=header.nbs
+            S.info.sname0=header.sname0; S.info.sname=header.sname
             
             #save acc at boundary
-            S.compute_watershed(ireturn=1)
+            S.compute_watershed(ireturn=1)            
             
             #save information
             S.save_data(header.sname,['dir','info'])
@@ -2371,12 +2432,14 @@ if __name__=="__main__":
     
     #----------case 1----------------------------------------------------------
     ids=['01',]; names=['GEBCO.asc',]; sname='A';
-    SS=dem(); SS.proc_demfile(names,ids,sname=sname,depth_limit=[0,5000],subdomain_size=1e6)
+    S=dem(); S.proc_demfile(names,ids,sname=sname,depth_limit=[0,5000],subdomain_size=1e7)
+    S.read_data('A_01.npz')
+
     
-    SS.read_data('{}.npz'.format(SS.headers[0].sname))
-    SS.compute_watershed()
-    SS.compute_river(area_limit=2e8)
-    SS.write_shapefile('{}_rivers'.format(SS.headers[0].sname),npt_smooth=5)
+    # SS.read_data('{}.npz'.format(SS.headers[0].sname))
+    # SS.compute_watershed()
+    # SS.compute_river(area_limit=2e8)
+    # SS.write_shapefile('{}_rivers'.format(SS.headers[0].sname),npt_smooth=5)
     
     #--------case 2------------------------------------------------------------    
     # ids=['01',]; names=['ne_atl_crm_v1.asc',]; sname='B'
