@@ -63,10 +63,12 @@ if len(findex)!=0:
    S=dem(); S.proc_demfile(sname=sname,findex=findex,subdomain_size=2e7)
 
    #compute watershed,and river
-   #for ifile in findex:
-   #    S=dem(); S.read_data('{}_{}.npz'.format(sname,ids[ifile]))
-   #    S.compute_watershed()
-   #    S.compute_river(area_limit=area_limit)
-   #    if len(S.rivers)==0:continue
-   #    S.write_shapefile('{}_{}'.format(sname,ids[ifile]),npt_smooth=20)
+   for ifile in findex:
+       S=dem(); S.read_data('{}_{}.npz'.format(sname,ids[ifile]))
+       S.compute_watershed()
+       if not hasattr(S,'acc'): continue
+      
+       S.compute_river(area_limit=area_limit)
+       if len(S.rivers)==0:continue
+       S.write_shapefile('{}_{}'.format(sname,ids[ifile]),npt_smooth=20)
 

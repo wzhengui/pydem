@@ -657,23 +657,30 @@ class dem(object):
         #initialize acc        
         self.search_upstream(sind0,ireturn=3,level_max=100,msg=msg)
         
-        if ireturn==0:
-            #add external acc
-            if hasattr(self.info,'sind_ext'):
-                if len(self.info.sind_ext)!=0:
-                    sind_list=self.search_downstream(self.info.sind_ext,ireturn=2)
-                    sind_all=[]; acc_all=[]
-                    for i in arange(len(self.info.sind_ext)):
-                        sind_all.extend(sind_list[i])
-                        acc_all.extend(ones(len(sind_list[i]))*self.info.acc_ext[i])
-                    sind_all=array(sind_all); acc_all=array(acc_all)
-                    self.acc.ravel()[sind_all]=self.acc.ravel()[sind_all]+acc_all
-            
+        if ireturn==0:        
             print('---------sort watershed number--------------------------------')
             #reorder segment number
             acc0=self.acc.ravel()[sind0]; ind=flipud(argsort(acc0)); sind=sind0[ind]; 
             seg=arange(len(sind)).astype('int')+1
             self.search_upstream(sind,ireturn=3,seg=seg,level_max=100,msg=msg) 
+            
+            #add external acc
+            if hasattr(self.info,'sind_ext'):
+                if len(self.info.sind_ext)!=0:
+                    slen=len(self.info.sind_ext)
+                    sind_list=self.search_downstream(self.info.sind_ext,ireturn=2)
+                    sind_all=[]; acc_all=[]
+                    for i in arange(slen):
+                        sind_all.extend(sind_list[i])
+                        acc_all.extend(ones(len(sind_list[i]))*self.info.acc_ext[i])
+                    sind_all=array(sind_all); acc_all=array(acc_all)
+                    
+                    #organize acc. 
+                    sind_unique=unique(sind_all); acc_unique=zeros(len(sind_unique)).astype('int')
+                    for i in arange(slen):
+                        sindc,iA,iB=intersect1d(sind_unique,sind_list[i],return_indices=True)
+                        acc_unique[iA]=acc_unique[iA]+self.info.acc_ext[i]                    
+                    self.acc.ravel()[sind_unique]=self.acc.ravel()[sind_unique]+acc_unique           
         else:
             #save boundary acc
             sind0=sort(sind0)
@@ -2299,6 +2306,8 @@ class dem(object):
         compute additional acc at the bounary, these acc are from other DEMs        
         '''
         if len(self.info.nbs)==0: return
+        if not hasattr(self.info,'sind0'): return
+        if not hasattr(self.info,'dem_bnd0'): return
         
         #determin dis_limit
         if dis_limit is None: 
@@ -2317,7 +2326,7 @@ class dem(object):
         if len(sind_all)==0: return
         
         #present sind_bnd
-        sind=self.info.sind_bnd; dem=self.info.dem_bnd0; ly,lx=self.get_coordinates(sind)
+        sind=self.info.sind_bnd; dem=self.info.dem_bnd; dem0=self.info.dem_bnd0; ly,lx=self.get_coordinates(sind)
         
         #exclude pts too far
         fp=~((sx_all<(min(lx)-dis_limit))|(sx_all>(max(lx)+dis_limit))|(sy_all<(min(ly)-dis_limit))|(sy_all>(max(ly)+dis_limit)))
@@ -2327,7 +2336,7 @@ class dem(object):
         #index of nearest pts
         ids=near_pts(c_[sx_all,sy_all],c_[lx,ly])
         sdist=abs((lx[ids]-sx_all)+1j*(ly[ids]-sy_all))        
-        fp=(sdist<dis_limit)*(dem[ids]<dem_all)        
+        fp=(sdist<dis_limit)*(dem0[ids]<dem_all)        
 
         acc_all_ext=acc_all[fp]; sind_all_ext=sind[ids][fp]        
         sind_ext,fpu,npt_unique=unique(sind_all_ext,return_inverse=True,return_counts=True)
@@ -2355,15 +2364,15 @@ class dem(object):
         for m in findex:
             header=self.headers[m]
             if os.path.exists('{}.npz'.format(header.sname)): 
-                print('work on {}'.format(header.id))
-                S=dem(); S.read_data('{}.npz'.format(header.sname))
-                S.info.names=header.names; S.info.ids=header.ids; S.info.nbs=header.nbs
-                S.info.sname0=header.sname0; S.info.sname=header.sname                
-                #save acc at boundary
-                S.compute_watershed(ireturn=1)                            
-                #save information
-                S.save_data(header.sname,['dir','info'])                
-                sys.stdout.flush()
+                #print('work on {}'.format(header.id))
+                #S=dem(); S.read_data('{}.npz'.format(header.sname))
+                #S.info.names=header.names; S.info.ids=header.ids; S.info.nbs=header.nbs
+                #S.info.sname0=header.sname0; S.info.sname=header.sname                
+                ##save acc at boundary
+                #S.compute_watershed(ireturn=1)                            
+                ##save information
+                #S.save_data(header.sname,['dir','info'])                
+                #sys.stdout.flush()
                 continue
             
             t0=time.time(); S=dem();           
@@ -2433,8 +2442,11 @@ if __name__=="__main__":
     close('all')
 
 #-----
-    S=dem(); S.read_data('G_011.npz')
-    S.compute_sind_ext()
+    S=dem(); S.read_data('G_42.npz')
+    S.compute_watershed()
+    S.compute_river(area_limit=1e6)
+    S.write_shapefile('G_42',npt_smooth=20)
+    # S.compute_sind_ext()
 
 #------------------------------------------------------------------------------
 #---------------read multiple dem files----------------------------------------
