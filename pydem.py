@@ -680,7 +680,7 @@ class dem(object):
             if len(setdiff1d(sind0,self.info.sind_bnd))!=0: sys.exit('sind0-sind_bnd!=0')
             self.info.sind0=sind0; self.info.acc0=self.acc.ravel()[sind0]        
             sindc,iA,iB=intersect1d(sind0,self.info.sind_bnd,return_indices=True)
-            if not array_equal(sindc,0): sys.exit('sind0!=sind_unique')
+            if not array_equal(sindc,sind0): sys.exit('sind0!=sind_unique')
             self.info.dem0=self.info.dem_bnd[iB].copy()
             
             #save seg depth
@@ -2307,8 +2307,9 @@ class dem(object):
         #collect bnd info from other DEMs
         sind_all=[]; dem_all=[]; acc_all=[]; sx_all=[]; sy_all=[];
         for i in arange(len(self.info.nbs)):
-            fname='{}_{}.npz'.format(self.info.sname0,self.info.names[self.info.nbs[i]])
+            fname='{}_{}.npz'.format(self.info.sname0,self.info.ids[self.info.nbs[i]])
             sinfo=self.read_data(fname,svar='info')
+            if not hasattr(sinfo,'sind0'): continue
             sind=sinfo.sind0; yi,xi=self.get_coordinates(sind,header=sinfo.header)
             sind_all.extend(sind); dem_all.extend(sinfo.dem0); acc_all.extend(sinfo.acc0)
             sx_all.extend(xi); sy_all.extend(yi)
@@ -2319,20 +2320,20 @@ class dem(object):
         sind=self.info.sind_bnd; dem=self.info.dem_bnd0; ly,lx=self.get_coordinates(sind)
         
         #exclude pts too far
-        fp=~((sx_all<(min(lx)-dis_limit))|(sx_all>(max(lx)+dis_limit))|(sy_all<(min(ly)-dis_limit))|(sy_all<(max(ly)+dis_limit)))
+        fp=~((sx_all<(min(lx)-dis_limit))|(sx_all>(max(lx)+dis_limit))|(sy_all<(min(ly)-dis_limit))|(sy_all>(max(ly)+dis_limit)))
         if sum(fp)==0: return
         sind_all=sind_all[fp]; dem_all=dem_all[fp]; acc_all=acc_all[fp]; sx_all=sx_all[fp]; sy_all=sy_all[fp]
         
         #index of nearest pts
         ids=near_pts(c_[sx_all,sy_all],c_[lx,ly])
         sdist=abs((lx[ids]-sx_all)+1j*(ly[ids]-sy_all))        
-        fp=(sdist<dis_limit)*(dem<dem_all)        
+        fp=(sdist<dis_limit)*(dem[ids]<dem_all)        
 
         acc_all_ext=acc_all[fp]; sind_all_ext=sind[ids][fp]        
         sind_ext,fpu,npt_unique=unique(sind_all_ext,return_inverse=True,return_counts=True)
         acc_ext=zeros(len(sind_ext)).astype('int')
         for i in arange(len(acc_all_ext)):
-            acc_ext[fpu[i]]=acc_ext[fpu[i]]+acc_all_ext
+            acc_ext[fpu[i]]=acc_ext[fpu[i]]+acc_all_ext[i]
 
         self.info.sind_ext=sind_ext; self.info.acc_ext=acc_ext          
         
@@ -2354,6 +2355,7 @@ class dem(object):
         for m in findex:
             header=self.headers[m]
             if os.path.exists('{}.npz'.format(header.sname)): 
+                print('work on {}'.format(header.id))
                 S=dem(); S.read_data('{}.npz'.format(header.sname))
                 S.info.names=header.names; S.info.ids=header.ids; S.info.nbs=header.nbs
                 S.info.sname0=header.sname0; S.info.sname=header.sname                
@@ -2361,6 +2363,7 @@ class dem(object):
                 S.compute_watershed(ireturn=1)                            
                 #save information
                 S.save_data(header.sname,['dir','info'])                
+                sys.stdout.flush()
                 continue
             
             t0=time.time(); S=dem();           
@@ -2429,6 +2432,10 @@ class dem(object):
 if __name__=="__main__":    
     close('all')
 
+#-----
+    S=dem(); S.read_data('G_011.npz')
+    S.compute_sind_ext()
+
 #------------------------------------------------------------------------------
 #---------------read multiple dem files----------------------------------------
 #------------------------------------------------------------------------------
@@ -2439,9 +2446,9 @@ if __name__=="__main__":
     # names=['Z:\pysheds\Gulf_1\gulf_1_dem_usgs_{}.asc'.format(i) for i in ids]
     
     #----------case 1----------------------------------------------------------
-    ids=['01',]; names=['GEBCO.asc',]; sname='A';
-    S=dem(); S.proc_demfile(names,ids,sname=sname,depth_limit=[0,5000],subdomain_size=1e7)
-    S.read_data('A_01.npz')
+    #ids=['01',]; names=['GEBCO.asc',]; sname='A';
+    #S=dem(); S.proc_demfile(names,ids,sname=sname,depth_limit=[0,5000],subdomain_size=1e7)
+    #S.read_data('A_01.npz')
 
     
     # SS.read_data('{}.npz'.format(SS.headers[0].sname))
