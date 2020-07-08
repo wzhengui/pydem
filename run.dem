@@ -13,9 +13,9 @@ depth_limit=[-2,1e5] #for pre-proc dem
 area_limit=1e6 #for compute river
 
 #parameter for batch job
-nnode=13; ppn=1; nproc=nnode*ppn
-#qname='skylake' 
-qname='haswell'
+nnode=6; ppn=1; nproc=nnode*ppn
+qname='skylake' 
+#qname='haswell'
 walltime='20:00:00'
 
 #-------------------------------------------------------------------------------------------
@@ -71,4 +71,3 @@ if len(findex)!=0:
        S.compute_river(area_limit=area_limit)
        if len(S.rivers)==0:continue
        S.write_shapefile('{}_{}'.format(sname,ids[ifile]),npt_smooth=20)
-
