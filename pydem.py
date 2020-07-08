@@ -651,11 +651,11 @@ class dem(object):
 
         #all the catchments        
         sind0=nonzero(self.dir.ravel()==0)[0];         
+        if len(sind0)==0: return
         
         print('---------compute watershed------------------------------------')
         #initialize acc        
         self.search_upstream(sind0,ireturn=3,level_max=100,msg=msg)
-        
         
         if ireturn==0:
             #add external acc
@@ -2301,7 +2301,7 @@ class dem(object):
         if len(self.info.nbs)==0: return
         
         #determin dis_limit
-        if dis_limit=None: 
+        if dis_limit is None: 
             dis_limit=2*self.info.header[-1]            
         
         #collect bnd info from other DEMs
@@ -2353,7 +2353,15 @@ class dem(object):
         #read each dem information 
         for m in findex:
             header=self.headers[m]
-            if os.path.exists('{}.npz'.format(header.sname)): continue
+            if os.path.exists('{}.npz'.format(header.sname)): 
+                S=dem(); S.read_data('{}.npz'.format(header.sname))
+                S.info.names=header.names; S.info.ids=header.ids; S.info.nbs=header.nbs
+                S.info.sname0=header.sname0; S.info.sname=header.sname                
+                #save acc at boundary
+                S.compute_watershed(ireturn=1)                            
+                #save information
+                S.save_data(header.sname,['dir','info'])                
+                continue
             
             t0=time.time(); S=dem();           
             #read diminfo           
