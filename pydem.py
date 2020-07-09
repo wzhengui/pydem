@@ -2313,15 +2313,6 @@ class dem(object):
         if dis_limit is None: 
             dis_limit=2*self.info.header[-1]            
 
-        #make sure neighboring DEMs are available
-        flag_loop=True
-        while flag_loop: 
-             flag_loop=False
-             for i in arange(len(self.info.nbs)):
-                 fname='{}_{}.npz'.format(self.info.sname0,self.info.ids[self.info.nbs[i]])
-                 if not os.path.exists(fname): flag_loop=True
-             time.sleep(10)
-        
         #collect bnd info from other DEMs
         sind_all=[]; dem_all=[]; acc_all=[]; sx_all=[]; sy_all=[];
         for i in arange(len(self.info.nbs)):
@@ -2440,9 +2431,21 @@ class dem(object):
             #save acc at boundary
             S.compute_watershed(ireturn=1)            
 
+            #save information
+            S.save_data(header.sname,['dir','info'])
+
+            #make sure neighboring DEMs are available
+            flag_loop=True
+            while flag_loop: 
+                  flag_loop=False
+                  for i in arange(len(S.info.nbs)):
+                      fname='{}_{}.npz'.format(S.info.sname0,S.info.ids[S.info.nbs[i]])
+                      if not os.path.exists(fname): flag_loop=True
+                  time.sleep(10)
+
             #compute sind_ext
             S.compute_sind_ext()
-            
+
             #save information
             S.save_data(header.sname,['dir','info'])
       

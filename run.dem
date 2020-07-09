@@ -13,9 +13,9 @@ depth_limit=[-2,1e5] #for pre-proc dem
 area_limit=1e6 #for compute river
 
 #parameter for batch job
-nnode=6; ppn=1; nproc=nnode*ppn
-qname='skylake' 
-#qname='haswell'
+nnode=13; ppn=1; nproc=nnode*ppn
+#qname='skylake' 
+qname='haswell'
 walltime='20:00:00'
 
 #-------------------------------------------------------------------------------------------
