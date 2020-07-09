@@ -2360,20 +2360,10 @@ class dem(object):
         #determine which dem files to be read
         if findex is None: findex=arange(nfile)
 
-        #read each dem information 
+        #read each dem information, and process them
         for m in findex:
             header=self.headers[m]
-            if os.path.exists('{}.npz'.format(header.sname)): 
-                #print('work on {}'.format(header.id))
-                #S=dem(); S.read_data('{}.npz'.format(header.sname))
-                #S.info.names=header.names; S.info.ids=header.ids; S.info.nbs=header.nbs
-                #S.info.sname0=header.sname0; S.info.sname=header.sname                
-                ##save acc at boundary
-                #S.compute_watershed(ireturn=1)                            
-                ##save information
-                #S.save_data(header.sname,['dir','info'])                
-                #sys.stdout.flush()
-                continue
+            if os.path.exists('{}.npz'.format(header.sname)): continue
             
             t0=time.time(); S=dem();           
             #read diminfo           
@@ -2390,22 +2380,26 @@ class dem(object):
                 print('--------------------------------------------------------------')
                 print('---------{},work on depression: subdomain {}---------------------'.format(header.id,i+1))
                 print('--------------------------------------------------------------')
-                  
+            
+                #read subdomain DEM data      
                 Si=S.domains[i]; 
                 if hasattr(S,'dem'):
                     Si.read_demdata(data=S.dem)    
                 else:
                     Si.read_demdata()    
                                 
+                #compute subdomain dir
                 Si.compute_dir();
             
-                #if Si is a subdomain, save bnd info for collecting
+                #if Si is a subdomain, save bnd info for combination
                 if S.info.nsubdomain>1:            
                     Si.collapse_subdomain();              
                     Si.change_bnd_dir()     
                                    
-                #resolve flat and fill depression
+                #resolve flat and fill depression in subdomain
                 Si.fill_depression(level_max=100,method=0)
+
+                #clean dem to save memory space
                 delattr(Si,'dem');
                 print('time={:.1f}s, total time={:.1f}s'.format(time.time()-t1,time.time()-t0))
                 sys.stdout.flush()
@@ -2432,8 +2426,21 @@ class dem(object):
             S.compute_watershed(ireturn=1)            
 
             #save information
-            S.save_data(header.sname,['dir','info'])
+            S.save_data(S.info.sname,['dir','info'])
+            
+            dt=time.time()-t0
+            print('total time={:.1f}s: {}'.format(time.time()-t0,S.info,sname))
+            sys.stdout.flush()
 
+        #compute sind_ext
+        for m in findex:
+            header=self.headers[m]; fname='{}.npz'.format(header.sname)
+            
+            #read processed DEM data
+            S=dem(); sinfo=S.read_data(fname,'info')
+            if len(sinfo.nbs)==0: continue                        
+            S.read_data(fname)        
+            
             #make sure neighboring DEMs are available
             flag_loop=True
             while flag_loop: 
@@ -2448,11 +2455,9 @@ class dem(object):
 
             #save information
             S.save_data(header.sname,['dir','info'])
-      
-            dt=time.time()-t0
-            print('total time={:.1f}s'.format(time.time()-t0))
-            sys.stdout.flush()
-            S=None
+
+            print('finish processing {}'.format(S.info,sname))
+            S=None; sys.stdout.flush()
                          
 if __name__=="__main__":    
     close('all')
