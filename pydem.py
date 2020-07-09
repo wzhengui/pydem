@@ -2452,6 +2452,7 @@ class dem(object):
             dt=time.time()-t0
             print('total time={:.1f}s'.format(time.time()-t0))
             sys.stdout.flush()
+            S=None
                          
 if __name__=="__main__":    
     close('all')
