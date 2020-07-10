@@ -2456,7 +2456,7 @@ class dem(object):
             #save information
             S.save_data(header.sname,['dir','info'])
 
-            print('finish processing {}'.format(S.info,sname))
+            print('finish processing {}'.format(S.info.sname))
             S=None; sys.stdout.flush()
                          
 if __name__=="__main__":    
