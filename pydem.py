@@ -23,7 +23,9 @@ class dem(object):
                 exec('self.{}=data.{}'.format(svar,svar))
         else:
             fid=load(path,allow_pickle=True)            
-            return fid[svar][()]                
+            data=fid[svar]         
+            fid.close()
+            return data[()]    
             
     def save_data(self,fname,svars):
         '''
@@ -2305,6 +2307,7 @@ class dem(object):
         '''
         compute additional acc at the bounary, these acc are from other DEMs        
         '''
+        self.info.sind_ext=[]
         if len(self.info.nbs)==0: return
         if not hasattr(self.info,'sind0'): return
         if not hasattr(self.info,'dem_bnd0'): return
@@ -2317,7 +2320,13 @@ class dem(object):
         sind_all=[]; dem_all=[]; acc_all=[]; sx_all=[]; sy_all=[];
         for i in arange(len(self.info.nbs)):
             fname='{}_{}.npz'.format(self.info.sname0,self.info.ids[self.info.nbs[i]])
-            sinfo=self.read_data(fname,svar='info')
+            flag_loop=True
+            while flag_loop:
+                  try:
+                     sinfo=self.read_data(fname,'info')
+                     flag_loop=False
+                  except:
+                     time.sleep(5)
             if not hasattr(sinfo,'sind0'): continue
             sind=sinfo.sind0; yi,xi=self.get_coordinates(sind,header=sinfo.header)
             sind_all.extend(sind); dem_all.extend(sinfo.dem0); acc_all.extend(sinfo.acc0)
@@ -2325,7 +2334,7 @@ class dem(object):
         sind_all=array(sind_all); dem_all=array(dem_all); acc_all=array(acc_all); sx_all=array(sx_all); sy_all=array(sy_all)
         if len(sind_all)==0: return
         
-        #present sind_bnd
+        #local sind_bnd
         sind=self.info.sind_bnd; dem=self.info.dem_bnd; dem0=self.info.dem_bnd0; ly,lx=self.get_coordinates(sind)
         
         #exclude pts too far
@@ -2439,6 +2448,7 @@ class dem(object):
             #read processed DEM data
             S=dem(); sinfo=S.read_data(fname,'info')
             if len(sinfo.nbs)==0: continue                        
+            if hasattr(sinfo,'sind_ext'): continue
             S.read_data(fname)        
             
             #make sure neighboring DEMs are available
