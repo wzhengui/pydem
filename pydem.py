@@ -693,7 +693,7 @@ class dem(object):
             self.info.dem0=self.info.dem_bnd[iB].copy()
             
             #save seg depth
-            sind=self.search_downstream(self.info.sind_bnd,ireturn=1)
+            sind=self.search_downstream(self.info.sind_bnd,ireturn=1,msg=msg)
             sind_unique,fpu=unique(sind,return_inverse=True)
             sindc,iA,iB=intersect1d(sind_unique,self.info.sind_bnd,return_indices=True)
             if not array_equal(sindc,sind_unique): sys.exit('sindc!=sind_unique')
@@ -2226,6 +2226,55 @@ class dem(object):
         
         return yi,xi
     
+    def combine_shp(self,name,npt_sample=None,npt_smooth=None)
+
+        #read fnames
+        headers=loadz('{}.npz'.format(name)).headers
+        
+        #combine all shpfiles
+        S0=npz_data(); nrec=0; X=[]; Y=[]
+        for i in arange(len(headers)):
+            fname='{}.shp'.format(headers[i].sname)
+            if not os.path.exists(fname): continue
+        
+            #read each shp
+            print('combining {}'.format(fname))
+            S=read_shapefile_data(fname)
+            S0.prj=S.prj; S0.type=S.type
+        
+            #read mth river
+            for m in arange(S.nrec):
+                xi=S.xy[m][:,0]; yi=S.xy[m][:,1]
+                if not isnan(xi[0]): xi=r_[nan,xi]; yi=r_[nan,yi]
+                if not isnan(xi[-1]): xi=r_[xi,nan]; yi=r_[yi,nan]
+                nind=nonzero(isnan(xi))[0]; nsec=len(nind)-1
+        
+                #read kth section
+                for k in arange(nsec):
+                    i1=nind[k]+1; i2=nind[k+1]
+                    xii=xi[i1:i2]; yii=yi[i1:i2]; slen=len(xii)
+        
+                    #re-sample river
+                    if N is not None:
+                       if slen<(2*N): continue
+                       npt=int(ceil(slen/N))
+                       pind=slen*linspace(0,1,npt+2)[1:-1]; pind=pind.astype('int')
+                       xii=xii[pind]; yii=yii[pind]
+        
+                    #smooth
+                    if npt_smooth is not None:
+                       xii=smooth(xii,npt_smooth)
+                       yii=smooth(yii,npt_smooth)
+        
+                    #add 
+                    nrec=nrec+1
+                    xii=r_[nan,xii]; yii=r_[nan,yii]
+                    X.extend(xii); Y.extend(yii)
+        
+        #write shapefile
+        S0.xy=c_[array(X),array(Y)]
+        write_shapefile_data(name,S0)
+
     def write_shapefile(self,sname,data='rivers',stype='POLYLINE',prjname='epsg:4326',attname=None,attvalue=None,npt_smooth=None):
         '''
         data: string name or data
