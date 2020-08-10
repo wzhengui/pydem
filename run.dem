@@ -1,7 +1,7 @@
 #!/usr/bin/env pythonw
 from pylib import *
 sys.path.append("/home/zwang/pysheds/pydem");
-from pydem import *
+from dem import *
 
 #-------------------------------------------------------------------------------------------
 #information about DEM files
