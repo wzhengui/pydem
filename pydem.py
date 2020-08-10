@@ -2226,7 +2226,7 @@ class dem(object):
         
         return yi,xi
     
-    def combine_shp(self,name,npt_sample=None,npt_smooth=None)
+    def combine_shp(self,name,npt_sample=None,npt_smooth=None):
 
         #read fnames
         headers=loadz('{}.npz'.format(name)).headers
@@ -2255,9 +2255,9 @@ class dem(object):
                     xii=xi[i1:i2]; yii=yi[i1:i2]; slen=len(xii)
         
                     #re-sample river
-                    if N is not None:
-                       if slen<(2*N): continue
-                       npt=int(ceil(slen/N))
+                    if npt_sample is not None:
+                       if slen<(2*npt_sample): continue
+                       npt=int(ceil(slen/npt_sample))
                        pind=slen*linspace(0,1,npt+2)[1:-1]; pind=pind.astype('int')
                        xii=xii[pind]; yii=yii[pind]
         

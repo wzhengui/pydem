@@ -11,15 +11,24 @@ names=['gulf_1_dem_usgs_{}.asc'.format(i) for i in ids]
 
 #parameters
 sname='G'            #name for save
-depth_limit=[-2,1e5] #for pre-proc dem
+depth_limit=[-5,1e5] #for pre-proc dem
 area_limit=1e6       #for compute river
 subdomain_size=2e7   #size for domain partition
 npt_smooth=20        #smooth_windows 
 npt_sample=20        #pts for sampling (interval)
 npt_smooth_cmb=3     #smooth window after  re-sample
 
+#parameters
+#sname='G'            #name for save
+#depth_limit=[-2,1e5] #for pre-proc dem
+#area_limit=1e6       #for compute river
+#subdomain_size=2e7   #size for domain partition
+#npt_smooth=20        #smooth_windows 
+#npt_sample=20        #pts for sampling (interval)
+#npt_smooth_cmb=3     #smooth window after  re-sample
+
 #parameter for batch job
-nnode=13; ppn=1; nproc=nnode*ppn
+nnode=10; ppn=1; nproc=nnode*ppn
 #qname='skylake' 
 qname='haswell'
 walltime='20:00:00'
@@ -66,8 +75,10 @@ findex=array(findex)
 #proc dem
 if len(findex)!=0:
    #compute dir
-   S=dem(); S.proc_demfile(sname=sname,findex=findex,subdomain_size=subdomain)
+   S=dem(); S.proc_demfile(sname=sname,findex=findex,subdomain_size=subdomain_size)
 
+comm.Barrier()
+if len(findex)!=0:
    #compute watershed,and river
    for ifile in findex:
        S=dem(); S.read_data('{}_{}.npz'.format(sname,ids[ifile]))
