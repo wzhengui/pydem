@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env pythonw
 from pylib import *
 sys.path.append("/home/zwang/pysheds/pydem");
 from pydem import *

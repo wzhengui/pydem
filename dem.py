@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env pythonw
 #this is the python library used to extracted river network from DEM
 from pylib import *
          
