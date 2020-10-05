@@ -1,56 +1,80 @@
-#!/usr/bin/env pythonw
+#!/usr/bin/env python3
 from pylib import *
-sys.path.append("/home/zwang/pysheds/pydem");
+sys.path.append("/home/zwang/pydem");
 from dem import *
 
 #-------------------------------------------------------------------------------------------
+#for JP
+#-------------------------------------------------------------------------------------------
 #information about DEM files
-bdir='Gulf_1'
-ids=[*arange(4,16),*arange(30,36),*arange(40,46)]; ids=['{:02}'.format(i) for i in ids]; ids.extend(['010','011'])
-names=['gulf_1_dem_usgs_{}.asc'.format(i) for i in ids]
+sdir='JP'
+ids=arange(36)
+names=['{}/jdem_{}.npz'.format(sdir,i) for i in ids]
 
 #parameters
-sname='G'            #name for save
-depth_limit=[-5,1e5] #for pre-proc dem
-area_limit=1e6       #for compute river
-subdomain_size=2e7   #size for domain partition
-npt_smooth=20        #smooth_windows 
+sname='A'         #name for save
+depth_limit=[0.1,1e5] #for pre-proc dem
+area_limit=2e7       #for compute river
+subdomain_size=0.5e8   #size for domain partition
+npt_smooth=20        #smooth_windows
 npt_sample=20        #pts for sampling (interval)
 npt_smooth_cmb=3     #smooth window after  re-sample
 
-#parameters
-#sname='G'            #name for save
-#depth_limit=[-2,1e5] #for pre-proc dem
-#area_limit=1e6       #for compute river
-#subdomain_size=2e7   #size for domain partition
-#npt_smooth=20        #smooth_windows 
-#npt_sample=20        #pts for sampling (interval)
-#npt_smooth_cmb=3     #smooth window after  re-sample
-
 #parameter for batch job
-nnode=10; ppn=1; nproc=nnode*ppn
-#qname='skylake' 
+nnode=7; ppn=1; nproc=nnode*ppn
+#qname='skylake'
 qname='haswell'
 walltime='20:00:00'
 
 #-------------------------------------------------------------------------------------------
-#get script name and dir
-code=sys.argv[0]; 
-bdir=os.path.abspath('./{}'.format(bdir))
-param=os.getenv('param'); job_on_node=os.getenv('job_on_node')
+#for GoM
+#-------------------------------------------------------------------------------------------
+##information about DEM files
+#bdir='Gulf_1'
+#ids=[*arange(4,16),*arange(30,36),*arange(40,46)]; ids=['{:02}'.format(i) for i in ids]; ids.extend(['010','011'])
+#names=['gulf_1_dem_usgs_{}.asc'.format(i) for i in ids]
+#
+##parameters
+#sname='G'            #name for save
+#depth_limit=[-5,1e5] #for pre-proc dem
+#area_limit=1e6       #for compute river
+#subdomain_size=2e7   #size for domain partition
+#npt_smooth=20        #smooth_windows
+#npt_sample=20        #pts for sampling (interval)
+#npt_smooth_cmb=3     #smooth window after  re-sample
+#
+##parameters
+##sname='G'            #name for save
+##depth_limit=[-2,1e5] #for pre-proc dem
+##area_limit=1e6       #for compute river
+##subdomain_size=2e7   #size for domain partition
+##npt_smooth=20        #smooth_windows
+##npt_sample=20        #pts for sampling (interval)
+##npt_smooth_cmb=3     #smooth window after  re-sample
+#
+##parameter for batch job
+#nnode=10; ppn=1; nproc=nnode*ppn
+##qname='skylake'
+#qname='haswell'
+#walltime='20:00:00'
 
+#-------------------------------------------------------------------------------------------
+#get script name and dir
+code=sys.argv[0];
+bdir=os.path.abspath('.')
+param=os.getenv('param'); job_on_node=os.getenv('job_on_node')
 
 #on front node
 if param==None and job_on_node==None:
    #copy code into bdir
-   os.system('cp {} {}'.format(code,bdir)); os.chdir(bdir); 
+   #os.system('cp {} {}'.format(code,bdir)); os.chdir(bdir);
 
    #save information of dem files
-   if not os.path.exists('{}.npz'.format(sname)):
-      S=dem(); S.read_files_info(names,ids,sname=sname,depth_limit=depth_limit,plot_domain=True)
+   if not os.path.exists('{}/{}.npz'.format(sdir,sname)):
+      S=dem(); S.read_files_info(names,ids,sname=sname,sdir=sdir,depth_limit=depth_limit,plot_domain=True)
 
    #submit job
-   os.system('qsub {} -N {} -v param="{} {}" -q {} -e {}.e -o {}.o -l nodes={}:ppn={} -l walltime={}'.format(code,sname,bdir,code,qname,sname,sname,nnode,ppn,walltime)); 
+   os.system('qsub {} -N {} -v param="{} {}" -q {} -e {}.e -o {}.o -l nodes={}:ppn={} -l walltime={}'.format(code,sname,bdir,code,qname,sname,sname,nnode,ppn,walltime));
    sys.exit()
 
 #submit jobs
@@ -75,21 +99,21 @@ findex=array(findex)
 #proc dem
 if len(findex)!=0:
    #compute dir
-   S=dem(); S.proc_demfile(sname=sname,findex=findex,subdomain_size=subdomain_size)
+   S=dem(); S.proc_demfile(sname=sname,sdir=sdir,findex=findex,subdomain_size=subdomain_size)
 
 comm.Barrier()
 if len(findex)!=0:
    #compute watershed,and river
    for ifile in findex:
-       S=dem(); S.read_data('{}_{}.npz'.format(sname,ids[ifile]))
+       S=dem(); S.read_data('{}/{}_{}.npz'.format(sdir,sname,ids[ifile]))
        S.compute_watershed()
        if not hasattr(S,'acc'): continue
-      
+
        S.compute_river(area_limit=area_limit)
        if len(S.rivers)==0:continue
-       S.write_shapefile('{}_{}'.format(sname,ids[ifile]),npt_smooth=npt_smooth)
+       S.write_shapefile('{}/{}_{}'.format(sdir,sname,ids[ifile]),npt_smooth=npt_smooth)
 
 #combination
 comm.Barrier()
-if myrank==0: 
-   S=dem(); S.combine_shp(sname,npt_sample=npt_sample,npt_smooth=npt_smooth_cmb)
+if myrank==0:
+   S=dem(); S.combine_shp(sname,sdir=sdir,npt_sample=npt_sample,npt_smooth=npt_smooth_cmb)

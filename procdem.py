@@ -6,14 +6,13 @@ from pylib import *
 import tifffile as tiff
 close("all")
 
-
 #input
 sdir='JP'
 fname='japan_dem_with_ocean.tif'
 sname='jdem'
 xll0=122; yll0=46; dxy=0.000277777784503963722;
-subdomain_size=3e8
-depth_limit=[1,1e4]
+subdomain_size=2e8
+depth_limit=[0.1,1e4]
 nodata=-99999
 
 #read dem

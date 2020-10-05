@@ -585,6 +585,7 @@ class dem(object):
         self.rivers=array(self.rivers); inum=array(inum)
 
         if len(self.rivers)==0: return
+        if len(inum)==0: self.rivers=[]; return
         #exclude rivers with len<3
         self.rivers=self.rivers[inum]
 
@@ -1141,6 +1142,13 @@ class dem(object):
 
         #if dem exists, use fill_depression directly
         if hasattr(self,'dem'):
+            #for bnd
+            if hasattr(self.info,'sind_bnd_local'):
+                self.info.sind_bnd=self.info.sind_bnd_local.copy();
+                delattr(self.info,'sind_bnd_local')
+            self.info.dir_bnd=self.dir.ravel()[self.info.sind_bnd]
+            self.info.dem_bnd=self.dem.ravel()[self.info.sind_bnd]
+
             self.fill_depression(method=1)
             return
 
@@ -2234,10 +2242,10 @@ class dem(object):
 
         return yi,xi
 
-    def combine_shp(self,name,npt_sample=None,npt_smooth=None):
+    def combine_shp(self,name,sdir='.',npt_sample=None,npt_smooth=None):
 
         #read fnames
-        S=loadz('{}.npz'.format(name))
+        S=loadz('{}/{}.npz'.format(sdir,name))
         if hasattr(S,'headers'):
            snames=[i.sname for i in S.headers]
         else:
@@ -2285,7 +2293,7 @@ class dem(object):
 
         #write shapefile
         S0.xy=c_[array(X),array(Y)]
-        write_shapefile_data(name,S0)
+        write_shapefile_data('{}/{}'.format(sdir,name),S0)
 
     def write_shapefile(self,sname,data='rivers',stype='POLYLINE',prjname='epsg:4326',attname=None,attvalue=None,npt_smooth=None):
         '''
@@ -2317,7 +2325,7 @@ class dem(object):
             xi[fp]=nan; yi[fp]=nan;
             SF.xy.append(c_[xi,yi])
         SF.xy=array(SF.xy)
-        if SF.xy.ndim==3: SF.xy=squeeze(SF.xy)
+        if SF.xy.ndim==3: SF.xy=[*SF.xy]
 
         if npt_smooth is not None:
             SF.xy=self.smooth_river(SF.xy,npt_smooth=npt_smooth)
@@ -2362,9 +2370,9 @@ class dem(object):
                 rxy[(id1+1):(id2-1),0]=srxi[1:-1]; rxy[(id1+1):(id2-1),1]=sryi[1:-1];
             data[i]=rxy
 
-        return data
+        return squeeze(array(data))
 
-    def compute_sind_ext(self,dis_limit=None):
+    def compute_sind_ext(self,sdir='.',dis_limit=None):
         '''
         compute additional acc at the bounary, these acc are from other DEMs
         '''
@@ -2380,7 +2388,7 @@ class dem(object):
         #collect bnd info from other DEMs
         sind_all=[]; dem_all=[]; acc_all=[]; sx_all=[]; sy_all=[];
         for i in arange(len(self.info.nbs)):
-            fname='{}_{}.npz'.format(self.info.sname0,self.info.ids[self.info.nbs[i]])
+            fname='{}/{}_{}.npz'.format(sdir,self.info.sname0,self.info.ids[self.info.nbs[i]])
             flag_loop=True
             while flag_loop:
                   try:
@@ -2402,6 +2410,8 @@ class dem(object):
         fp=~((sx_all<(min(lx)-dis_limit))|(sx_all>(max(lx)+dis_limit))|(sy_all<(min(ly)-dis_limit))|(sy_all>(max(ly)+dis_limit)))
         if sum(fp)==0: return
         sind_all=sind_all[fp]; dem_all=dem_all[fp]; acc_all=acc_all[fp]; sx_all=sx_all[fp]; sy_all=sy_all[fp]
+
+        s=npz_data(); s.p0=c_[sx_all,sy_all]; s.p=c_[lx,ly]; save_npz('tmp_near',s)
 
         #index of nearest pts
         ids=near_pts(c_[sx_all,sy_all],c_[lx,ly])
@@ -2484,19 +2494,16 @@ class dem(object):
             S.collect_subdomain_data(name='dir',outname='dir')
             S.info.nodata=Si.info.nodata
 
-            S.save_data('A1',['dir','info'])
+            #fill global depression
+            if S.info.nsubdomain>1: S.fill_depression_global()
 
-            if S.info.nsubdomain>1:
-                #fill global depression
-                S.fill_depression_global()
-            else:
-                #update bnd info
-                S.info.sind_bnd=S.info.sind_bnd_local.copy(); delattr(S.info,'sind_bnd_local');
-                S.info.dir_bnd=S.info.dir_bnd_local.copy(); delattr(S.info,'dir_bnd_local');
-                S.info.dem_bnd=S.info.dem_bnd_local.copy(); delattr(S.info,'dem_bnd_local');
-
-            S.save_data('A2',['dir','info'])
-            sys.exit()
+            #update bnd info
+            for svar in ['sind','dir','dem']:
+                if not hasattr(S.info,'{}_bnd_local'.format(svar)): continue
+                exec('S.info.{}_bnd=S.info.{}_bnd_local.copy(); delattr(S.info,"{}_bnd_local")'.format(svar,svar,svar))
+                #S.info.sind_bnd=S.info.sind_bnd_local.copy(); delattr(S.info,'sind_bnd_local');
+                #S.info.dir_bnd=S.info.dir_bnd_local.copy(); delattr(S.info,'dir_bnd_local');
+                #S.info.dem_bnd=S.info.dem_bnd_local.copy(); delattr(S.info,'dem_bnd_local');
 
             #save DEMs info
             S.info.names=header.names; S.info.ids=header.ids; S.info.nbs=header.nbs
@@ -2509,7 +2516,7 @@ class dem(object):
             S.save_data(S.info.sname,['dir','info'])
 
             dt=time.time()-t0
-            print('total time={:.1f}s: {}'.format(time.time()-t0,S.info,sname))
+            print('total time={:.1f}s: {}'.format(time.time()-t0,S.info.sname))
             sys.stdout.flush()
 
         #compute sind_ext
@@ -2527,12 +2534,12 @@ class dem(object):
             while flag_loop:
                   flag_loop=False
                   for i in arange(len(S.info.nbs)):
-                      fname='{}_{}.npz'.format(S.info.sname0,S.info.ids[S.info.nbs[i]])
+                      fname='{}/{}_{}.npz'.format(sdir,S.info.sname0,S.info.ids[S.info.nbs[i]])
                       if not os.path.exists(fname): flag_loop=True
                   time.sleep(10)
 
             #compute sind_ext
-            S.compute_sind_ext()
+            S.compute_sind_ext(sdir=sdir)
 
             #save information
             S.save_data(header.sname,['dir','info'])
@@ -2547,10 +2554,24 @@ if __name__=="__main__":
 #---------------read multiple dem files----------------------------------------
 #------------------------------------------------------------------------------
     # file names
-    sdir='JP'; sname='A'
-    ids=arange(3,25)
+    sdir='JP'; sname='A'; area_limit=2e7       #for compute river
+    ids=arange(36)
     names=['./{}/jdem_{}.npz'.format(sdir,i) for i in ids]
-    S=dem(); S.proc_demfile(names,ids,sname=sname,sdir=sdir,depth_limit=[1,8000],subdomain_size=1e8)
+    # S=dem(); S.proc_demfile(names,ids,sname=sname,sdir=sdir,depth_limit=[1,8000],subdomain_size=1e8)
+
+    npt_smooth=20        #smooth_windows
+    npt_sample=20        #pts for sampling (interval)
+    npt_smooth_cmb=3     #smooth window after  re-sample
+    # S=dem(); S.combine_shp(sname,sdir=sdir,npt_sample=npt_sample,npt_smooth=npt_smooth_cmb)
+
+    # ifiles=[32,]
+    # # ifiles=[26,]
+    # for ifile in ifiles:
+    #     S=dem(); S.read_data('{}/{}_{}.npz'.format(sdir,sname,ids[ifile]))
+    #     S.compute_watershed()
+    #     S.compute_river(area_limit=area_limit)
+    #     if len(S.rivers)==0: print('river==0: {}'.format(ifile))
+    # S.write_shapefile('{}/{}_{}'.format(sdir,sname,ids[ifile]),npt_smooth=npt_smooth)
 
     sys.exit()
 #------------------------------------------------------------------------------
