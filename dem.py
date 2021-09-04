@@ -33,7 +33,7 @@ class dem(object):
         '''
         if not isinstance(svars,list): svars=[svars,]
 
-        S=npz_data();
+        S=zdata();
         for svar in svars:
             exec('S.{}=self.{}'.format(svar,svar))
         save_npz(fname,S)
@@ -213,7 +213,7 @@ class dem(object):
         '''
 
         #read header
-        self.info=npz_data()
+        self.info=zdata()
         if header is None:
            if name.endswith('.asc'):
               with open(name,'r') as fid:
@@ -292,7 +292,7 @@ class dem(object):
                         ix=k*dx0-offset; dx=dx0+2*offset; eix=offset; edx=dx0
 
                 #save subdomain info
-                sinfo=npz_data();
+                sinfo=zdata();
                 sinfo.name=name
                 sinfo.header=[dy,dx,yll-iy*dxy,xll+ix*dxy,dxy]
                 sinfo.extent=[xll+ix*dxy,xll+ix*dxy+(dx-1)*dxy,yll-iy*dxy-(dy-1)*dxy,yll-iy*dxy]
@@ -351,7 +351,7 @@ class dem(object):
         if nfile==1:
             #if there is only one dem, return
             self.headers=[]
-            header=npz_data()
+            header=zdata()
             header.diminfo=diminfo0[0]
             header.name=names[0]
             header.sname0=sname
@@ -461,7 +461,7 @@ class dem(object):
             #reorgnize info
             self.headers=[]
             for i in arange(nfile):
-                header=npz_data()
+                header=zdata()
                 header.diminfo=diminfo[i]
                 header.id=ids[i]
                 header.name=names[i]
@@ -2252,7 +2252,7 @@ class dem(object):
            snames=[S.info.sname,]
 
         #combine all shpfiles
-        S0=npz_data(); nrec=0; X=[]; Y=[]
+        S0=zdata(); nrec=0; X=[]; Y=[]
         for i in arange(len(snames)):
             fname='{}.shp'.format(snames[i])
             if not os.path.exists(fname): continue
@@ -2302,7 +2302,7 @@ class dem(object):
         '''
 
         #get data
-        SF=npz_data()
+        SF=zdata()
         if isinstance(data, str):
             exec('SF.data=self.{}'.format(data))
         else:
@@ -2411,7 +2411,7 @@ class dem(object):
         if sum(fp)==0: return
         sind_all=sind_all[fp]; dem_all=dem_all[fp]; acc_all=acc_all[fp]; sx_all=sx_all[fp]; sy_all=sy_all[fp]
 
-        s=npz_data(); s.p0=c_[sx_all,sy_all]; s.p=c_[lx,ly]; save_npz('tmp_near',s)
+        s=zdata(); s.p0=c_[sx_all,sy_all]; s.p=c_[lx,ly]; save_npz('tmp_near',s)
 
         #index of nearest pts
         ids=near_pts(c_[sx_all,sy_all],c_[lx,ly])
