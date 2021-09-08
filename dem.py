@@ -2321,6 +2321,7 @@ class dem(object):
         SF.xy=[];
         for i in arange(len(SF.data)):
             yi,xi=self.get_coordinates(SF.data[i])
+            if len(xi)==0: continue
             fp=(xi==self.info.nodata)|(yi==self.info.nodata);
             xi[fp]=nan; yi[fp]=nan;
             SF.xy.append(c_[xi,yi])
